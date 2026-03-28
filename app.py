@@ -392,6 +392,76 @@ async def prd_endpoint(request: Request):
     return JSONResponse({"markdown": prd_text})
 
 
+# ── Browser sign-in setup endpoints ────────────────────────────────────────
+
+@app.get("/api/browser-profile")
+async def browser_profile(request: Request):
+    """Return whether the authenticated user has a saved Steel.dev browser profile."""
+    uid = _get_uid(request)
+    profile_id = _fs_get_steel_profile(uid) if uid else None
+    return JSONResponse({"hasProfile": bool(profile_id), "profileId": profile_id})
+
+
+@app.post("/api/browser-signin/start")
+async def browser_signin_start(request: Request):
+    """
+    Create a Steel.dev session with persist_profile=True.
+    Returns the Steel viewer URL so the user can sign in with Google in their browser.
+    """
+    uid = _get_uid(request)
+    if not uid:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    if not STEEL_API_KEY:
+        return JSONResponse({"error": "STEEL_API_KEY not configured"}, status_code=500)
+
+    def create_session():
+        from steel import Steel
+        s = Steel(steel_api_key=STEEL_API_KEY)
+        session = s.sessions.create(
+            persist_profile=True,
+            dimensions={"width": 1280, "height": 768},
+        )
+        return session
+
+    session = await asyncio.to_thread(create_session)
+    profile_id = getattr(session, "profile_id", None)
+
+    # Save profile_id immediately — upload completes after release
+    if profile_id and uid:
+        await asyncio.to_thread(_fs_save_steel_profile, uid, profile_id)
+
+    viewer_url = f"https://viewer.steel.dev?sessionId={session.id}&apiKey={STEEL_API_KEY}"
+    return JSONResponse({
+        "sessionId": session.id,
+        "profileId": profile_id,
+        "viewerUrl": viewer_url,
+    })
+
+
+@app.post("/api/browser-signin/finish")
+async def browser_signin_finish(request: Request):
+    """
+    Release the Steel.dev session. Steel uploads the browser profile automatically on release.
+    """
+    uid = _get_uid(request)
+    data = await request.json()
+    session_id = data.get("sessionId")
+    if not session_id:
+        return JSONResponse({"error": "sessionId required"}, status_code=400)
+
+    def release():
+        from steel import Steel
+        s = Steel(steel_api_key=STEEL_API_KEY)
+        s.sessions.release(session_id)
+
+    try:
+        await asyncio.to_thread(release)
+    except Exception as e:
+        print(f"Session release error: {e}")
+
+    return JSONResponse({"status": "ok"})
+
+
 # ── /api/build ─────────────────────────────────────────────────────────────
 # Drives the full build pipeline:
 #   1. Fetch PRD text from the Gemini interaction store
@@ -589,8 +659,7 @@ def _run_build(send, recv_q, prd_text: str, app_name: str, uid: str | None = Non
             session_kwargs["profile_id"] = existing_profile_id
             send("log", text="Restoring saved browser profile (Google sign-in included)…")
         else:
-            send("log", text="No saved profile found — you'll sign in once and we'll save it.")
-            send("need_google_signin", first_time=True)
+            send("log", text="No saved browser profile — continuing without saved credentials.")
 
         session = steel.sessions.create(**session_kwargs)
         sid = session.id

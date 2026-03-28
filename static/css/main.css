@@ -1752,6 +1752,232 @@ img { display: block; max-width: 100%; }
   transform: scale(1.05);
 }
 
+/* ── Browser setup modal ── */
+.bsetup-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.bsetup-card {
+  background: #fff;
+  border: 1px solid var(--gray-150);
+  border-radius: 20px;
+  width: min(900px, 96vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.22);
+  overflow: hidden;
+}
+
+.bsetup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--gray-150);
+  gap: 16px;
+}
+
+.bsetup-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bsetup-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #f5f5f7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gray-700);
+  flex-shrink: 0;
+}
+
+.bsetup-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--gray-900);
+  margin: 0 0 2px;
+}
+
+.bsetup-sub {
+  font-size: 12px;
+  color: var(--gray-500);
+  margin: 0;
+}
+
+.bsetup-skip {
+  font-size: 13px;
+  color: var(--gray-500);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.bsetup-skip:hover { background: #f5f5f7; color: var(--gray-700); }
+
+.bsetup-steps {
+  display: flex;
+  gap: 0;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--gray-150);
+  background: #fafafa;
+}
+
+.bsetup-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--gray-400);
+  flex: 1;
+  position: relative;
+}
+
+.bsetup-step + .bsetup-step::before {
+  content: "→";
+  margin-right: 8px;
+  color: var(--gray-300);
+}
+
+.bsetup-step--active { color: var(--gray-800); font-weight: 500; }
+.bsetup-step--done   { color: #22c55e; }
+
+.bsetup-step-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: currentColor;
+  color: #fff;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.bsetup-step--done .bsetup-step-num  { background: #22c55e; }
+.bsetup-step--active .bsetup-step-num { background: var(--gray-900); }
+.bsetup-step:not(.bsetup-step--active):not(.bsetup-step--done) .bsetup-step-num {
+  background: var(--gray-200);
+  color: var(--gray-400);
+}
+
+.bsetup-browser {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.bsetup-browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: #f0f0f5;
+  border-bottom: 1px solid var(--gray-150);
+}
+
+.bsetup-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.bsetup-url {
+  font-size: 12px;
+  color: var(--gray-600);
+  margin-left: 8px;
+  font-family: monospace;
+}
+
+.bsetup-browser-body {
+  flex: 1;
+  position: relative;
+  background: #000;
+  min-height: 420px;
+}
+
+.bsetup-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+  min-height: 420px;
+}
+
+.bsetup-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #1a1a1a;
+  color: var(--gray-400);
+  gap: 12px;
+  font-size: 13px;
+}
+
+.bsetup-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-top-color: rgba(255,255,255,0.7);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.bsetup-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  border-top: 1px solid var(--gray-150);
+  gap: 16px;
+}
+
+.bsetup-hint {
+  font-size: 12px;
+  color: var(--gray-500);
+  margin: 0;
+}
+
+.bsetup-done-btn {
+  padding: 10px 22px;
+  background: var(--gray-900);
+  color: #fff;
+  border: none;
+  border-radius: 980px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.bsetup-done-btn:hover  { opacity: 0.85; }
+.bsetup-done-btn:disabled { opacity: 0.5; cursor: default; }
+
 /* ── Thought block ── */
 .log-thought {
   margin: 6px 0;

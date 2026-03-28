@@ -115,6 +115,63 @@
 
   </div>
 
+  <!-- Browser setup modal — shown once before first build to capture Google sign-in -->
+  <div class="bsetup-backdrop" id="bsetup-modal" style="display:none;" aria-modal="true">
+    <div class="bsetup-card">
+      <div class="bsetup-header">
+        <div class="bsetup-title-group">
+          <div class="bsetup-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            </svg>
+          </div>
+          <div>
+            <h3 class="bsetup-title">Connect your Google account</h3>
+            <p class="bsetup-sub">Sign in once — Saasy saves your browser session for all future builds</p>
+          </div>
+        </div>
+        <button class="bsetup-skip" id="bsetup-skip">Skip for now</button>
+      </div>
+
+      <div class="bsetup-steps">
+        <div class="bsetup-step bsetup-step--done">
+          <span class="bsetup-step-num">✓</span>
+          <span>Browser session started</span>
+        </div>
+        <div class="bsetup-step bsetup-step--active" id="bsetup-step2">
+          <span class="bsetup-step-num">2</span>
+          <span>Sign in with Google in the browser below</span>
+        </div>
+        <div class="bsetup-step" id="bsetup-step3">
+          <span class="bsetup-step-num">3</span>
+          <span>Click "Done" — your session is saved automatically</span>
+        </div>
+      </div>
+
+      <div class="bsetup-browser">
+        <div class="bsetup-browser-bar">
+          <span class="bsetup-dot" style="background:#ff5f57"></span>
+          <span class="bsetup-dot" style="background:#febc2e"></span>
+          <span class="bsetup-dot" style="background:#28c840"></span>
+          <span class="bsetup-url" id="bsetup-url">Loading browser…</span>
+        </div>
+        <div class="bsetup-browser-body">
+          <iframe id="bsetup-iframe" class="bsetup-iframe" src="about:blank" allow="*"></iframe>
+          <div class="bsetup-loading" id="bsetup-loading">
+            <div class="bsetup-spinner"></div>
+            <p>Starting browser session…</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bsetup-footer">
+        <p class="bsetup-hint">Navigate to <strong>accounts.google.com</strong> and sign in, then click Done.</p>
+        <button class="bsetup-done-btn" id="bsetup-done">Done — I've signed in</button>
+      </div>
+    </div>
+  </div>
+
   <!-- New Business Modal -->
   <div class="modal-overlay hidden" id="modal-overlay">
     <div class="modal" role="dialog" aria-modal="true">
@@ -255,9 +312,9 @@
     overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
 
-    // Choice: idea → go straight to chat
+    // Choice: idea → check profile, then redirect
     document.getElementById("choice-idea").addEventListener("click", () => {
-      window.location.href = "/new";
+      navigateWithProfileCheck("/new");
     });
 
     // Choice: existing → show fields
@@ -272,14 +329,100 @@
       stepChoice.classList.remove("hidden");
     });
 
-    // Submit existing business
+    // Submit existing business → check profile, then redirect
     document.getElementById("modal-submit").addEventListener("click", () => {
       const repo = document.getElementById("repo-input").value.trim();
-      const url = document.getElementById("url-input").value.trim();
+      const url  = document.getElementById("url-input").value.trim();
       const params = new URLSearchParams();
       if (repo) params.append("repo", repo);
-      if (url) params.append("url", url);
-      window.location.href = `/new?${params.toString()}`;
+      if (url)  params.append("url", url);
+      navigateWithProfileCheck(`/new?${params.toString()}`);
+    });
+
+    // ── Browser setup modal ─────────────────────────────────
+    let pendingRedirect = null;
+    let setupSessionId  = null;
+
+    async function getToken() {
+      try { return await auth.currentUser?.getIdToken() || ""; } catch { return ""; }
+    }
+
+    async function navigateWithProfileCheck(dest) {
+      pendingRedirect = dest;
+      const token = await getToken();
+
+      let hasProfile = false;
+      try {
+        const r = await fetch("/api/browser-profile", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        hasProfile = (await r.json()).hasProfile;
+      } catch {}
+
+      if (hasProfile) {
+        window.location.href = dest;
+      } else {
+        closeModal();                    // close the "new business" modal
+        await openBrowserSetup(token);
+      }
+    }
+
+    async function openBrowserSetup(token) {
+      const modal   = document.getElementById("bsetup-modal");
+      const iframe  = document.getElementById("bsetup-iframe");
+      const loading = document.getElementById("bsetup-loading");
+      const urlEl   = document.getElementById("bsetup-url");
+      modal.style.display = "flex";
+
+      try {
+        const r = await fetch("/api/browser-signin/start", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const data = await r.json();
+        setupSessionId = data.sessionId;
+        iframe.src = data.viewerUrl;
+        urlEl.textContent = "accounts.google.com";
+        loading.style.display = "none";
+      } catch (e) {
+        loading.innerHTML = `<p style="color:#b91c1c">Failed to start browser: ${e.message}</p>`;
+      }
+    }
+
+    async function finishSetup(redirect) {
+      const token = await getToken();
+      document.getElementById("bsetup-step2").className = "bsetup-step bsetup-step--done";
+      document.getElementById("bsetup-step3").className = "bsetup-step bsetup-step--active";
+      const doneBtn = document.getElementById("bsetup-done");
+      doneBtn.disabled = true;
+      doneBtn.textContent = "Saving session…";
+
+      try {
+        await fetch("/api/browser-signin/finish", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: setupSessionId })
+        });
+      } catch {}
+
+      if (redirect) window.location.href = redirect;
+      else document.getElementById("bsetup-modal").style.display = "none";
+    }
+
+    document.getElementById("bsetup-done").addEventListener("click", () => finishSetup(pendingRedirect));
+
+    document.getElementById("bsetup-skip").addEventListener("click", async () => {
+      // Release any open session in background
+      if (setupSessionId) {
+        const token = await getToken();
+        fetch("/api/browser-signin/finish", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: setupSessionId })
+        }).catch(() => {});
+      }
+      document.getElementById("bsetup-modal").style.display = "none";
+      if (pendingRedirect) window.location.href = pendingRedirect;
     });
 
   </script>

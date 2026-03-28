@@ -147,7 +147,6 @@
 
     initializeApp(firebaseConfig);
     const auth = getAuth();
-    onAuthStateChanged(auth, (u) => { if (!u) window.location.href = "/"; });
 
     // ── Pipeline steps definition ──────────────────────────
     const STEPS = [
@@ -283,8 +282,10 @@
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       ws = new WebSocket(`${protocol}//${window.location.host}/api/ws/build`);
 
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ prd_text: prdText, app_name: appName }));
+      ws.onopen = async () => {
+        let token = "";
+        try { token = await auth.currentUser?.getIdToken() || ""; } catch {}
+        ws.send(JSON.stringify({ prd_text: prdText, app_name: appName, token }));
       };
 
       ws.onmessage = (event) => {
@@ -403,7 +404,10 @@
       return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     }
 
-    startBuild();
+    onAuthStateChanged(auth, (u) => {
+      if (!u) { window.location.href = "/"; return; }
+      startBuild();
+    });
   </script>
 
 </body>
