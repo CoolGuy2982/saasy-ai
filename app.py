@@ -77,6 +77,28 @@ def _fs_save_prd(uid: str, bid: str, name: str, prd: str):
        .set({"name": name, "prd": prd, "type": "idea",
              "updatedAt": fb_fs.SERVER_TIMESTAMP}, merge=True))
 
+def _fs_get_steel_profile(uid: str) -> str | None:
+    """Return the user's saved Steel.dev profile ID from Firestore, or None."""
+    if not fs or not uid:
+        return None
+    try:
+        doc = fs.collection("users").document(uid).get()
+        return (doc.to_dict() or {}).get("steelProfileId")
+    except Exception:
+        return None
+
+def _fs_save_steel_profile(uid: str, profile_id: str):
+    """Persist the user's Steel.dev profile ID to Firestore."""
+    if not fs or not uid or not profile_id:
+        return
+    try:
+        fs.collection("users").document(uid).set(
+            {"steelProfileId": profile_id, "steelProfileUpdatedAt": fb_fs.SERVER_TIMESTAMP},
+            merge=True
+        )
+    except Exception as e:
+        print(f"Failed saving Steel profile: {e}")
+
 # ── Gemini client ──────────────────────────────────────────
 try:
     from google import genai
@@ -514,12 +536,13 @@ def _execute_action_steel(steel_client, session_id: str, fname: str, args: dict,
     return img, navigated_url
 
 
-def _run_build(send, recv_q, prd_text: str, app_name: str):
+def _run_build(send, recv_q, prd_text: str, app_name: str, uid: str | None = None):
     """
     Runs the entire build pipeline in a background thread.
     Uses Steel.dev Computer API for all browser interactions (no Playwright CDP).
     `send(type, **kwargs)` queues an event to the websocket.
     `recv_q` receives dict messages from the websocket.
+    `uid` is the Firebase UID used to load/save the persistent Steel browser profile.
     """
     # ── Step 1: Plan ───────────────────────────────────────────────────────
     send("step_start", step="plan", label="Planning", progress=5)
@@ -553,11 +576,23 @@ def _run_build(send, recv_q, prd_text: str, app_name: str):
     SW, SH = 1280, 768   # Steel.dev default viewport
 
     try:
-        session = steel.sessions.create(
+        # Load saved browser profile (cookies, Google sign-in, etc.)
+        existing_profile_id = _fs_get_steel_profile(uid) if uid else None
+
+        session_kwargs = dict(
             dimensions={"width": SW, "height": SH},
             block_ads=True,
-            api_timeout=900000,  # 15 min — hobby plan max
+            api_timeout=900000,       # 15 min — hobby plan max
+            persist_profile=True,     # always save profile on release
         )
+        if existing_profile_id:
+            session_kwargs["profile_id"] = existing_profile_id
+            send("log", text="Restoring saved browser profile (Google sign-in included)…")
+        else:
+            send("log", text="No saved profile found — you'll sign in once and we'll save it.")
+            send("need_google_signin", first_time=True)
+
+        session = steel.sessions.create(**session_kwargs)
         sid = session.id
         send("log", text=f"Steel.dev session {sid[:8]}… ready.")
         send("url", url="https://bolt.new")
@@ -765,6 +800,12 @@ def _run_build(send, recv_q, prd_text: str, app_name: str):
             try:
                 steel.sessions.release(session.id)
                 send("log", text="Steel.dev session released.")
+                # After release Steel finishes uploading the profile.
+                # Save the profile_id so the next build restores browser state.
+                profile_id = getattr(session, "profile_id", None)
+                if profile_id and uid:
+                    _fs_save_steel_profile(uid, profile_id)
+                    send("log", text="Browser profile saved — next build will auto sign-in.")
             except Exception:
                 pass
 
@@ -786,6 +827,15 @@ async def build_websocket(websocket: WebSocket):
 
     prd_text = data.get("prd_text", "")
     app_name = data.get("app_name", "My App")
+    token    = data.get("token", "")
+
+    # Resolve Firebase UID from the auth token sent by the client
+    uid = None
+    if fb_auth and token:
+        try:
+            uid = fb_auth.verify_id_token(token)["uid"]
+        except Exception:
+            pass
 
     recv_q = queue.Queue()
     loop = asyncio.get_running_loop()
@@ -804,7 +854,7 @@ async def build_websocket(websocket: WebSocket):
             loop_instance = asyncio.ProactorEventLoop()
             asyncio.set_event_loop(loop_instance)
         try:
-            _run_build(send, recv_q, prd_text, app_name)
+            _run_build(send, recv_q, prd_text, app_name, uid)
         except Exception as e:
             import traceback
             error_msg = traceback.format_exc()
