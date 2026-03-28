@@ -115,9 +115,10 @@
 
   </div>
 
-  <!-- Browser setup modal — shown once before first build to capture Google sign-in -->
+  <!-- Browser setup modal — live interactive iframe via Steel debugUrl -->
   <div class="bsetup-backdrop" id="bsetup-modal" style="display:none;" aria-modal="true">
     <div class="bsetup-card">
+
       <div class="bsetup-header">
         <div class="bsetup-title-group">
           <div class="bsetup-icon">
@@ -127,25 +128,21 @@
             </svg>
           </div>
           <div>
-            <h3 class="bsetup-title">Connect your Google account</h3>
-            <p class="bsetup-sub">Sign in once — Saasy saves your browser session for all future builds</p>
+            <h3 class="bsetup-title">Connect your accounts</h3>
+            <p class="bsetup-sub">Sign in to Google, GitHub &amp; Bolt.new — saved once for all future builds</p>
           </div>
         </div>
-        <button class="bsetup-skip" id="bsetup-skip">Skip for now</button>
       </div>
 
       <div class="bsetup-steps">
-        <div class="bsetup-step bsetup-step--done">
-          <span class="bsetup-step-num">✓</span>
-          <span>Browser session started</span>
+        <div class="bsetup-step bsetup-step--active" id="bsetup-s1">
+          <span class="bsetup-step-num">1</span><span>Google</span>
         </div>
-        <div class="bsetup-step bsetup-step--active" id="bsetup-step2">
-          <span class="bsetup-step-num">2</span>
-          <span>Sign in with Google in the browser below</span>
+        <div class="bsetup-step" id="bsetup-s2">
+          <span class="bsetup-step-num">2</span><span>GitHub</span>
         </div>
-        <div class="bsetup-step" id="bsetup-step3">
-          <span class="bsetup-step-num">3</span>
-          <span>Click "Done" — your session is saved automatically</span>
+        <div class="bsetup-step" id="bsetup-s3">
+          <span class="bsetup-step-num">3</span><span>Bolt.new</span>
         </div>
       </div>
 
@@ -154,21 +151,27 @@
           <span class="bsetup-dot" style="background:#ff5f57"></span>
           <span class="bsetup-dot" style="background:#febc2e"></span>
           <span class="bsetup-dot" style="background:#28c840"></span>
-          <span class="bsetup-url" id="bsetup-url">Loading browser…</span>
+          <span class="bsetup-url" id="bsetup-url">Starting browser…</span>
+          <div class="bsetup-navbtns">
+            <button class="bsetup-navbtn" id="bsetup-nav-google">Google</button>
+            <button class="bsetup-navbtn" id="bsetup-nav-github">GitHub</button>
+            <button class="bsetup-navbtn" id="bsetup-nav-bolt">Bolt.new</button>
+          </div>
         </div>
-        <div class="bsetup-browser-body">
-          <iframe id="bsetup-iframe" class="bsetup-iframe" src="about:blank" allow="*"></iframe>
+        <div class="bsetup-browser-body" id="bsetup-body">
           <div class="bsetup-loading" id="bsetup-loading">
             <div class="bsetup-spinner"></div>
             <p>Starting browser session…</p>
           </div>
+          <iframe id="bsetup-iframe" class="bsetup-iframe" src="" allow="clipboard-read; clipboard-write; popups" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation" style="display:none"></iframe>
         </div>
       </div>
 
       <div class="bsetup-footer">
-        <p class="bsetup-hint">Navigate to <strong>accounts.google.com</strong> and sign in, then click Done.</p>
-        <button class="bsetup-done-btn" id="bsetup-done">Done — I've signed in</button>
+        <p class="bsetup-hint">Sign in to the accounts you want to use for this business. If you want the same accounts as before, just click Save. <span id="bsetup-openlink" style="display:none">— <a id="bsetup-direct-link" href="#" target="_blank" style="color:var(--accent)">Open browser in new tab</a> if popups are blocked.</span></p>
+        <button class="bsetup-done-btn" id="bsetup-done" style="display:none">Save &amp; continue →</button>
       </div>
+
     </div>
   </div>
 
@@ -256,6 +259,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
     import { getAuth, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+    import { getFirestore, collection, getDocs, orderBy, query } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBsPAga9Hd_71js7lKGlvASrY8b-toWa8M",
@@ -268,23 +272,90 @@
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
+    const db   = getFirestore(app);
 
-    // Auth guard
-    onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        window.location.href = "/";
-        return;
-      }
-      // Populate UI
+    // Auth guard + load businesses
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { window.location.href = "/"; return; }
+
+      // Populate sidebar user info
       document.getElementById("user-name").textContent = user.displayName || "User";
       document.getElementById("user-email").textContent = user.email;
       const avatar = document.getElementById("user-avatar");
       if (user.photoURL) {
-        avatar.innerHTML = `<img src="${user.photoURL}" alt="${user.displayName}" />`;
+        avatar.innerHTML = `<img src="${user.photoURL}" alt="${user.displayName}" style="width:100%;height:100%;border-radius:50%;object-fit:cover" />`;
       } else {
         avatar.textContent = (user.displayName || "U")[0].toUpperCase();
       }
+
+      // Load businesses from Firestore
+      await loadBusinesses(user.uid);
     });
+
+    async function loadBusinesses(uid) {
+      const grid      = document.getElementById("businesses-grid");
+      const emptyState = document.getElementById("empty-state");
+
+      try {
+        let snap;
+        try {
+          snap = await getDocs(query(collection(db, "users", uid, "businesses"), orderBy("updatedAt", "desc")));
+        } catch {
+          snap = await getDocs(collection(db, "users", uid, "businesses"));
+        }
+
+        if (snap.empty) {
+          emptyState.style.display = "";
+          return;
+        }
+
+        emptyState.style.display = "none";
+
+        snap.forEach(doc => {
+          const d  = doc.data();
+          const id = doc.id;
+          const name   = d.name   || "Untitled";
+          const status = d.status || "idea";
+          const prd    = d.prd    || "";
+          const excerpt = prd.replace(/[#*`]/g, "").trim().slice(0, 100);
+
+          const statusLabel = { idea: "Idea", building: "Building", live: "Live" }[status] || status;
+          const statusClass = { idea: "status-idea", building: "status-building", live: "status-live" }[status] || "status-idea";
+
+          const card = document.createElement("div");
+          card.className = "business-card";
+          card.innerHTML = `
+            <div class="business-card-header">
+              <div class="business-name">${esc(name)}</div>
+              <span class="business-status ${statusClass}">${statusLabel}</span>
+            </div>
+            ${excerpt ? `<p class="business-excerpt">${esc(excerpt)}…</p>` : ""}
+            <div class="business-card-footer">
+              <button class="biz-btn biz-btn--secondary" data-id="${id}" data-name="${esc(name)}" data-action="chat">Continue chat</button>
+              <button class="biz-btn biz-btn--primary"   data-id="${id}" data-name="${esc(name)}" data-action="build">Build →</button>
+            </div>
+          `;
+          grid.appendChild(card);
+        });
+
+        // Wire card buttons
+        grid.addEventListener("click", e => {
+          const btn = e.target.closest("[data-action]");
+          if (!btn) return;
+          const { id, name, action } = btn.dataset;
+          if (action === "chat")  window.location.href = `/new?bid=${id}`;
+          if (action === "build") window.location.href = `/build?name=${encodeURIComponent(name)}&bid=${id}`;
+        });
+
+      } catch (err) {
+        console.error("Failed to load businesses:", err);
+        emptyState.style.display = "";
+      }
+    }
+
+    function esc(s) {
+      return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
 
     // Sign out
     document.getElementById("sign-out").addEventListener("click", async () => {
@@ -340,8 +411,9 @@
     });
 
     // ── Browser setup modal ─────────────────────────────────
-    let pendingRedirect = null;
-    let setupSessionId  = null;
+    let pendingRedirect  = null;
+    let activeSessionId  = null;
+    let activeProfileId  = null;
 
     async function getToken() {
       try { return await auth.currentUser?.getIdToken() || ""; } catch { return ""; }
@@ -350,80 +422,109 @@
     async function navigateWithProfileCheck(dest) {
       pendingRedirect = dest;
       const token = await getToken();
-
-      let hasProfile = false;
-      try {
-        const r = await fetch("/api/browser-profile", {
-          headers: { "Authorization": `Bearer ${token}` }
-        });
-        hasProfile = (await r.json()).hasProfile;
-      } catch {}
-
-      if (hasProfile) {
-        window.location.href = dest;
-      } else {
-        closeModal();                    // close the "new business" modal
-        await openBrowserSetup(token);
-      }
+      closeModal();
+      openBrowserSetup(token);
     }
 
     async function openBrowserSetup(token) {
-      const modal   = document.getElementById("bsetup-modal");
-      const iframe  = document.getElementById("bsetup-iframe");
-      const loading = document.getElementById("bsetup-loading");
-      const urlEl   = document.getElementById("bsetup-url");
+      const modal    = document.getElementById("bsetup-modal");
+      const loading  = document.getElementById("bsetup-loading");
+      const iframe   = document.getElementById("bsetup-iframe");
+      const doneBtn  = document.getElementById("bsetup-done");
+      const urlEl    = document.getElementById("bsetup-url");
+
+      // Reset UI
+      loading.style.display = "flex";
+      iframe.style.display  = "none";
+      doneBtn.style.display = "none";
+      document.getElementById("bsetup-s1").className = "bsetup-step bsetup-step--active";
+      document.getElementById("bsetup-s2").className = "bsetup-step";
+      document.getElementById("bsetup-s3").className = "bsetup-step";
+      urlEl.textContent = "Starting browser…";
       modal.style.display = "flex";
 
       try {
-        const r = await fetch("/api/browser-signin/start", {
+        const r = await fetch("/api/browser-setup/start", {
           method: "POST",
           headers: { "Authorization": `Bearer ${token}` }
         });
         const data = await r.json();
-        setupSessionId = data.sessionId;
-        iframe.src = data.viewerUrl;
-        urlEl.textContent = "accounts.google.com";
+        if (data.error) throw new Error(data.error);
+
+        activeSessionId = data.sessionId;
+        activeProfileId = data.profileId;
+
+        // Embed the live interactive browser — Steel's debugUrl + ?interactive=true
+        // gives 25fps WebRTC streaming with full keyboard/mouse, no Steel login needed
+        const iframeSrc = data.debugUrl + "?interactive=true&startUrl=" + encodeURIComponent("https://accounts.google.com");
+        iframe.src = iframeSrc;
         loading.style.display = "none";
+        iframe.style.display  = "block";
+        doneBtn.style.display = "inline-flex";
+        urlEl.textContent = "accounts.google.com";
+        // Show direct-link fallback for popup-heavy OAuth flows (bolt.new, GitHub)
+        const linkEl = document.getElementById("bsetup-direct-link");
+        if (linkEl) {
+          linkEl.href = iframeSrc;
+          document.getElementById("bsetup-openlink").style.display = "inline";
+        }
+
       } catch (e) {
         loading.innerHTML = `<p style="color:#b91c1c">Failed to start browser: ${e.message}</p>`;
+        loading.style.display = "flex";
       }
     }
 
-    async function finishSetup(redirect) {
+    // Quick-nav buttons — tell the embedded browser to go to a specific site
+    // We can't postMessage cross-origin into the iframe, so instead we navigate
+    // via a separate Steel computer API call through our backend.
+    async function navTo(url, stepEl) {
+      if (!activeSessionId) return;
       const token = await getToken();
-      document.getElementById("bsetup-step2").className = "bsetup-step bsetup-step--done";
-      document.getElementById("bsetup-step3").className = "bsetup-step bsetup-step--active";
-      const doneBtn = document.getElementById("bsetup-done");
-      doneBtn.disabled = true;
-      doneBtn.textContent = "Saving session…";
+      await fetch("/api/browser-setup/navigate", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: activeSessionId, url })
+      });
+      document.getElementById("bsetup-url").textContent = url.replace("https://", "");
+      // Advance step indicator visually
+      ["bsetup-s1","bsetup-s2","bsetup-s3"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el === stepEl) el.className = "bsetup-step bsetup-step--active";
+        else if (document.getElementById("bsetup-steps")?.children && el.compareDocumentPosition(stepEl) & Node.DOCUMENT_POSITION_FOLLOWING)
+          el.className = "bsetup-step bsetup-step--done";
+      });
+    }
 
+    document.getElementById("bsetup-nav-google").addEventListener("click", () =>
+      navTo("https://accounts.google.com", document.getElementById("bsetup-s1")));
+    document.getElementById("bsetup-nav-github").addEventListener("click", () =>
+      navTo("https://github.com/login", document.getElementById("bsetup-s2")));
+    document.getElementById("bsetup-nav-bolt").addEventListener("click", () =>
+      navTo("https://bolt.new", document.getElementById("bsetup-s3")));
+
+    // Save & continue — release session, persist profile, redirect
+    document.getElementById("bsetup-done").addEventListener("click", async () => {
+      if (!activeSessionId) return;
+      const btn = document.getElementById("bsetup-done");
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+
+      const token = await getToken();
       try {
-        await fetch("/api/browser-signin/finish", {
+        await fetch("/api/browser-setup/finish", {
           method: "POST",
           headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: setupSessionId })
+          body: JSON.stringify({ sessionId: activeSessionId, profileId: activeProfileId })
         });
       } catch {}
 
-      if (redirect) window.location.href = redirect;
-      else document.getElementById("bsetup-modal").style.display = "none";
-    }
-
-    document.getElementById("bsetup-done").addEventListener("click", () => finishSetup(pendingRedirect));
-
-    document.getElementById("bsetup-skip").addEventListener("click", async () => {
-      // Release any open session in background
-      if (setupSessionId) {
-        const token = await getToken();
-        fetch("/api/browser-signin/finish", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: setupSessionId })
-        }).catch(() => {});
-      }
       document.getElementById("bsetup-modal").style.display = "none";
+      btn.disabled = false;
+      btn.textContent = "Save & continue →";
       if (pendingRedirect) window.location.href = pendingRedirect;
     });
+
 
   </script>
 

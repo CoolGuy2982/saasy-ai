@@ -84,9 +84,37 @@
 
     </div>
 
-    <!-- Right: Browser view -->
+    <!-- Right: Design Gallery or Browser view -->
     <div class="build-right">
 
+      <!-- View tabs — shown when both gallery and browser are available -->
+      <div class="build-view-tabs" id="build-view-tabs" style="display:none;">
+        <button class="bvt-btn bvt-btn--active" id="tab-designs">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          Designs
+        </button>
+        <button class="bvt-btn" id="tab-browser">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          Browser
+        </button>
+      </div>
+
+      <!-- Design Gallery — shown during Stitch phase -->
+      <div class="design-gallery" id="design-gallery" style="display:none;">
+        <div class="design-gallery-header">
+          <div class="design-gallery-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <span>UI Designs</span>
+          </div>
+          <span class="design-gallery-subtitle" id="design-gallery-subtitle">Generating screens with Google Stitch…</span>
+        </div>
+        <div class="design-gallery-grid" id="design-gallery-grid">
+          <!-- Cards injected by JS -->
+        </div>
+      </div>
+
+      <!-- Browser pane — shown during browser phases -->
+      <div id="browser-pane" style="display:none; width:100%;">
         <!-- Browser chrome -->
         <div class="browser-chrome">
           <div class="browser-bar">
@@ -116,7 +144,7 @@
             <p class="browser-placeholder-sub">The AI agent will open a browser session here.</p>
           </div>
           <img class="browser-screenshot" id="browser-screenshot" src="" alt="Browser view" />
-          
+
           <div class="interactive-chat-overlay" id="chat-overlay" style="display: none;">
             <form id="chat-form">
               <input type="text" id="chat-input" placeholder="Message the AI agent to take control…" autocomplete="off">
@@ -125,8 +153,29 @@
               </button>
             </form>
           </div>
+
+          <!-- Intervention overlay: shown when build needs human sign-in -->
+          <div class="intervention-overlay" id="intervention-overlay" style="display: none;">
+            <div class="intervention-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span id="intervention-reason">Sign-in required — take control of the browser</span>
+            </div>
+            <iframe id="intervention-iframe"
+              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation"
+              allow="clipboard-read; clipboard-write"
+              src="about:blank"></iframe>
+            <div class="intervention-footer">
+              <span class="intervention-hint">Sign in, then click Continue when ready.</span>
+              <button class="intervention-continue-btn" id="intervention-continue">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                Continue build
+              </button>
+            </div>
+          </div>
         </div>
       </div>
+
+      </div><!-- /browser-pane -->
 
     </div>
 
@@ -151,7 +200,7 @@
     // ── Pipeline steps definition ──────────────────────────
     const STEPS = [
       { id: "plan",    label: "Planning",         sub: "Analyzing PRD and defining architecture" },
-      { id: "github",  label: "GitHub setup",     sub: "Creating repository and initial structure" },
+      { id: "github",  label: "UI Design",          sub: "Generating screens with Google Stitch" },
       { id: "build",   label: "Building app",     sub: "Generating code with Bolt.new" },
       { id: "test",    label: "Testing",           sub: "Running automated checks and QA" },
       { id: "deploy",  label: "Deploying",         sub: "Publishing to Google Cloud Run" },
@@ -168,6 +217,17 @@
     const browserPlaceholder = document.getElementById("browser-placeholder");
     const browserScreenshot = document.getElementById("browser-screenshot");
     const buildTitle = document.getElementById("build-title");
+    const designGallery = document.getElementById("design-gallery");
+    const designGalleryGrid = document.getElementById("design-gallery-grid");
+    const designGallerySubtitle = document.getElementById("design-gallery-subtitle");
+    const browserPane = document.getElementById("browser-pane");
+    const buildViewTabs = document.getElementById("build-view-tabs");
+    const tabDesigns = document.getElementById("tab-designs");
+    const tabBrowser = document.getElementById("tab-browser");
+
+    // Stored design data for modal: name → { html, data }
+    const designScreens = {};
+    let hasDesigns = false;
 
     // Read app name from query params
     const params = new URLSearchParams(window.location.search);
@@ -276,7 +336,6 @@
         return;
       }
 
-      browserSpinner.style.display = "block";
       addLog("Connecting to build agent via WebSocket…");
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -309,17 +368,85 @@
       };
     }
 
+    function slugify(s) {
+      return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    }
+
+    function switchView(view) {
+      if (view === "designs") {
+        designGallery.style.display = "flex";
+        browserPane.style.display = "none";
+        tabDesigns.classList.add("bvt-btn--active");
+        tabBrowser.classList.remove("bvt-btn--active");
+      } else {
+        designGallery.style.display = "none";
+        browserPane.style.display = "block";
+        tabDesigns.classList.remove("bvt-btn--active");
+        tabBrowser.classList.add("bvt-btn--active");
+      }
+    }
+
+    function showBrowser() {
+      if (hasDesigns) buildViewTabs.style.display = "flex";
+      switchView("browser");
+    }
+
+    // ── Design preview modal ──────────────────────────────
+    function openDesignModal(name) {
+      const modal = document.getElementById("design-modal");
+      const iframe = document.getElementById("design-modal-iframe");
+      document.getElementById("design-modal-name").textContent = name;
+      const s = designScreens[name] || {};
+      if (s.html) {
+        iframe.srcdoc = s.html;
+      } else if (s.data) {
+        iframe.src = `data:image/png;base64,${s.data}`;
+      }
+      modal.style.display = "flex";
+    }
+
+    function closeDesignModal() {
+      document.getElementById("design-modal").style.display = "none";
+      const iframe = document.getElementById("design-modal-iframe");
+      iframe.srcdoc = ""; iframe.src = "";
+    }
+
+    // Apply scale to iframe preview card (call after DOM insertion)
+    function applyPreviewScale(card) {
+      const preview = card.querySelector(".design-card-preview");
+      const scaler  = card.querySelector(".design-card-scaler");
+      if (!preview || !scaler) return;
+      const w = preview.offsetWidth;
+      if (!w) return;
+      const scale = w / 1440;
+      const h = Math.round(900 * scale);
+      preview.style.height = h + "px";
+      scaler.style.transform = `scale(${scale})`;
+    }
+
     function handleEvent(ev) {
       switch (ev.type) {
         case "step_start":
           setStep(ev.step, "active");
           setProgress(ev.progress || 0);
           addLog(`Started: ${ev.label}`);
+          if (ev.step === "github") {
+            // Stitch design phase — show gallery, hide browser
+            designGallery.style.display = "flex";
+            browserPane.style.display = "none";
+            designGallerySubtitle.textContent = "Generating screens with Google Stitch…";
+          } else if (["build", "test", "deploy"].includes(ev.step)) {
+            // Browser phases — switch to browser view
+            showBrowser();
+          }
           break;
         case "step_done":
           setStep(ev.step, "done");
           setProgress(ev.progress || 0);
           addLog(`Completed: ${ev.label}`, "success");
+          if (ev.step === "github") {
+            designGallerySubtitle.textContent = "Designs complete";
+          }
           break;
         case "step_error":
           setStep(ev.step, "error");
@@ -330,7 +457,78 @@
         case "log":
           addLog(ev.text, ev.level || "info");
           break;
+        case "design_generating": {
+          const cardId = `design-card-${slugify(ev.name)}`;
+          if (!document.getElementById(cardId)) {
+            const skeleton = document.createElement("div");
+            skeleton.className = "design-card design-card--skeleton";
+            skeleton.id = cardId;
+            skeleton.innerHTML = `<div class="design-card-skeleton-img"></div><div class="design-card-label">${esc(ev.name)}</div>`;
+            designGalleryGrid.appendChild(skeleton);
+          }
+          break;
+        }
+        case "design_screen": {
+          hasDesigns = true;
+          designScreens[ev.name] = { html: ev.html || "", data: ev.data || "" };
+
+          const cardId = `design-card-${slugify(ev.name)}`;
+          let card = document.getElementById(cardId);
+          if (!card) {
+            card = document.createElement("div");
+            card.id = cardId;
+            designGalleryGrid.appendChild(card);
+          }
+          card.className = "design-card";
+          card.innerHTML = "";
+
+          // Preview area
+          const preview = document.createElement("div");
+          preview.className = "design-card-preview";
+          preview.addEventListener("click", () => openDesignModal(ev.name));
+
+          if (ev.html) {
+            // Iframe preview — scaled to fit card width
+            const scaler = document.createElement("div");
+            scaler.className = "design-card-scaler";
+            const iframe = document.createElement("iframe");
+            iframe.style.cssText = "width:1440px;height:900px;border:none;display:block;";
+            iframe.scrolling = "no";
+            scaler.appendChild(iframe);
+            preview.appendChild(scaler);
+            card.appendChild(preview);
+
+            // Set srcdoc + scale after layout
+            requestAnimationFrame(() => {
+              iframe.srcdoc = ev.html;
+              applyPreviewScale(card);
+            });
+          } else if (ev.data) {
+            // Fallback: screenshot image (natural size, not squished)
+            const img = document.createElement("img");
+            img.src = `data:image/png;base64,${ev.data}`;
+            img.alt = ev.name;
+            img.style.cssText = "width:100%;height:auto;display:block;";
+            preview.appendChild(img);
+            card.appendChild(preview);
+          }
+
+          // Hover overlay
+          const overlay = document.createElement("div");
+          overlay.className = "design-card-hover-overlay";
+          overlay.innerHTML = "<span>Expand</span>";
+          preview.appendChild(overlay);
+
+          const label = document.createElement("div");
+          label.className = "design-card-label";
+          label.textContent = ev.name;
+          card.appendChild(label);
+
+          addLog(`Design ready: ${ev.name}`, "success");
+          break;
+        }
         case "screenshot":
+          showBrowser();
           browserPlaceholder.style.display = "none";
           browserScreenshot.style.display = "block";
           document.getElementById("chat-overlay").style.display = "block";
@@ -344,6 +542,26 @@
           break;
         case "ask_user":
           document.getElementById("chat-input").focus();
+          break;
+        case "needs_intervention": {
+          const overlay = document.getElementById("intervention-overlay");
+          const iframe  = document.getElementById("intervention-iframe");
+          const reasonEl = document.getElementById("intervention-reason");
+          if (ev.reason) reasonEl.textContent = ev.reason;
+          if (ev.debugUrl) iframe.src = ev.debugUrl + "?interactive=true";
+          overlay.style.display = "flex";
+          browserSpinner.style.display = "none";
+          statusDot.className = "build-status-dot build-status-dot--paused";
+          statusText.textContent = "Waiting for you";
+          addLog(`⚠ Intervention needed: ${ev.reason || "sign-in required"}`, "warn");
+          break;
+        }
+        case "intervention_resumed":
+          document.getElementById("intervention-overlay").style.display = "none";
+          document.getElementById("intervention-iframe").src = "about:blank";
+          statusDot.className = "build-status-dot build-status-dot--active";
+          statusText.textContent = "Running";
+          addLog("Resumed build.", "success");
           break;
         case "done":
         case "ws_done":
@@ -400,15 +618,54 @@
       input.value = "";
     });
 
+    // Intervention Continue button
+    document.getElementById("intervention-continue").addEventListener("click", () => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({ type: "continue" }));
+      document.getElementById("intervention-overlay").style.display = "none";
+      document.getElementById("intervention-iframe").src = "about:blank";
+      statusDot.className = "build-status-dot build-status-dot--active";
+      statusText.textContent = "Running";
+      addLog("Resuming build…");
+    });
+
     function esc(s) {
       return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     }
+
+    // Tab clicks
+    tabDesigns.addEventListener("click", () => switchView("designs"));
+    tabBrowser.addEventListener("click",  () => switchView("browser"));
+
+    // Modal close
+    document.getElementById("design-modal-close").addEventListener("click", closeDesignModal);
+    document.getElementById("design-modal-overlay").addEventListener("click", closeDesignModal);
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDesignModal(); });
+
+    // Re-apply iframe scales on resize
+    window.addEventListener("resize", () => {
+      document.querySelectorAll(".design-card").forEach(applyPreviewScale);
+    });
 
     onAuthStateChanged(auth, (u) => {
       if (!u) { window.location.href = "/"; return; }
       startBuild();
     });
   </script>
+
+  <!-- Design preview modal -->
+  <div class="design-modal" id="design-modal" style="display:none;">
+    <div class="design-modal-overlay" id="design-modal-overlay"></div>
+    <div class="design-modal-box">
+      <div class="design-modal-header">
+        <span class="design-modal-name" id="design-modal-name"></span>
+        <button class="design-modal-close" id="design-modal-close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <iframe class="design-modal-iframe" id="design-modal-iframe" frameborder="0"></iframe>
+    </div>
+  </div>
 
 </body>
 </html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Saasy — Cold Email Engine</title>
+  <link rel="stylesheet" href="/static/css/main.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+</head>
+<body class="dashboard-page overflow-hidden">
+
+  <!-- Sidebar (Reused from Dashboard) -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark small">
+        <svg width="20" height="20" viewBox="0 0 28 28" fill="none">
+          <rect x="0" y="0" width="13" height="13" rx="3" fill="currentColor"/>
+          <rect x="15" y="0" width="13" height="13" rx="3" fill="currentColor" opacity="0.4"/>
+          <rect x="0" y="15" width="13" height="13" rx="3" fill="currentColor" opacity="0.4"/>
+          <rect x="15" y="15" width="13" height="13" rx="3" fill="currentColor"/>
+        </svg>
+      </div>
+      <span class="logo-text">Saasy</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="/dashboard" class="nav-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+        </svg>
+        <span>Businesses</span>
+      </a>
+      <a href="/marketing" class="nav-item active">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+          <polyline points="22,6 12,13 2,6"/>
+        </svg>
+        <span>Marketing</span>
+      </a>
+    </nav>
+  </aside>
+
+  <!-- Main content -->
+  <div class="main-content" style="background-color: var(--white);">
+
+    <!-- Top bar -->
+    <header class="topbar" style="border-bottom: 1px solid var(--gray-100); padding-bottom: 20px; align-items: center;">
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <a href="/marketing" class="btn-back" aria-label="Go back">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+        </a>
+        <div>
+          <h2 class="page-title">Cold Email Engine</h2>
+          <p class="page-sub">Draft and schedule automatic outreach.</p>
+        </div>
+      </div>
+    </header>
+
+    <div class="marketing-grid animate-in" style="--delay: 0.1s; padding: 48px; display: flex; align-items: center; justify-content: center; height: 100%;">
+      <p style="color: var(--gray-400); font-size: 14px;">Placeholder for Outreach Engine functionality.</p>
+    </div>
+  </div>
+
+</body>
+</html>

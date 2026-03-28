@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Saasy — Generating Reels</title>
+  <link rel="stylesheet" href="/static/css/main.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    /* Carousel specific styles */
+    .reels-carousel-container {
+      display: none;
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--white);
+      z-index: 100;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.4s ease forwards;
+    }
+    .carousel-title {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 24px;
+      color: var(--gray-900);
+    }
+    .reels-carousel {
+      display: flex;
+      gap: 24px;
+      overflow-x: auto;
+      padding: 24px;
+      max-width: 100%;
+      scroll-snap-type: x mandatory;
+    }
+    .reel-card {
+      scroll-snap-align: center;
+      flex: 0 0 calc(50% - 12px);
+      max-width: 320px;
+      aspect-ratio: 9/16;
+      border-radius: 24px;
+      overflow: hidden;
+      background: var(--gray-100);
+      box-shadow: var(--shadow-xl);
+      transform: scale(0.95);
+      transition: transform 0.4s var(--bouncy-bezier);
+    }
+    .reel-card:hover {
+      transform: scale(1) translateY(-8px);
+    }
+    .reel-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body class="build-page">
+
+  <!-- Header -->
+  <header class="build-header">
+    <div class="build-header-left">
+      <a href="/marketing" class="build-back">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </a>
+      <div class="build-header-logo">
+        <svg width="18" height="18" viewBox="0 0 28 28" fill="none">
+          <rect x="0" y="0" width="13" height="13" rx="2.5" fill="currentColor"/>
+          <rect x="15" y="0" width="13" height="13" rx="2.5" fill="currentColor" opacity="0.35"/>
+          <rect x="0" y="15" width="13" height="13" rx="2.5" fill="currentColor" opacity="0.35"/>
+          <rect x="15" y="15" width="13" height="13" rx="2.5" fill="currentColor"/>
+        </svg>
+        <span>Saasy Marketing</span>
+      </div>
+      <div class="build-divider"></div>
+      <div class="build-title-wrap">
+        <span class="build-title" id="build-title">Generating Marketing Reels</span>
+      </div>
+    </div>
+    <div class="build-header-right">
+      <div class="build-status" id="build-status">
+        <span class="build-status-dot build-status-dot--active"></span>
+        <span id="build-status-text">In progress</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main build layout -->
+  <div class="build-layout">
+
+    <!-- Left: Pipeline + Log -->
+    <div class="build-left">
+
+      <!-- Pipeline steps -->
+      <div class="pipeline">
+        <div class="pipeline-header">
+          <span class="pipeline-label">Pipeline</span>
+          <span class="pipeline-pct" id="pipeline-pct">0%</span>
+        </div>
+
+        <div class="pipeline-track">
+          <div class="pipeline-progress" id="pipeline-progress" style="width: 0%"></div>
+        </div>
+
+        <div class="pipeline-steps" id="pipeline-steps">
+          <!-- Steps injected by JS -->
+        </div>
+      </div>
+
+      <!-- Activity log -->
+      <div class="build-log">
+        <div class="build-log-header">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+          </svg>
+          <span>Generator log</span>
+        </div>
+        <div class="build-log-body" id="build-log-body">
+          <!-- Log entries injected by JS -->
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right: Browser view -->
+    <div class="build-right" style="position: relative;">
+
+        <!-- Browser chrome -->
+        <div class="browser-chrome" id="browser-chrome-el">
+          <div class="browser-bar">
+            <div class="browser-dots">
+              <span class="dot-red"></span>
+              <span class="dot-yellow"></span>
+              <span class="dot-green"></span>
+            </div>
+            <div class="browser-url-wrap">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span class="browser-url" id="browser-url">about:blank</span>
+            </div>
+            <div class="browser-bar-actions">
+              <div class="browser-spinner" id="browser-spinner"></div>
+            </div>
+          </div>
+
+        <div class="browser-viewport" id="browser-viewport">
+          <div class="browser-placeholder" id="browser-placeholder">
+            <div class="browser-placeholder-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+                <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+              </svg>
+            </div>
+            <p>Initializing Steel Browser…</p>
+            <p class="browser-placeholder-sub">Capturing UI screenshots for Veo generation.</p>
+          </div>
+          <img class="browser-screenshot" id="browser-screenshot" src="" alt="Browser view" />
+        </div>
+      </div>
+
+      <!-- Generated Reels Carousel Overlay -->
+      <div class="reels-carousel-container" id="reels-carousel-container">
+        <div class="carousel-title">Your Marketing Reels are Ready</div>
+        <div class="reels-carousel" id="reels-carousel-track">
+          <!-- Will be injected by JS -->
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBsPAga9Hd_71js7lKGlvASrY8b-toWa8M",
+      authDomain: "saasy-aa123.firebaseapp.com",
+      projectId: "saasy-aa123",
+      storageBucket: "saasy-aa123.firebasestorage.app",
+      messagingSenderId: "421734088338",
+      appId: "1:421734088338:web:fc2143d4c765fcad0ef04b"
+    };
+
+    initializeApp(firebaseConfig);
+    const auth = getAuth();
+
+    // ── Pipeline steps definition ──────────────────────────
+    const STEPS = [
+      { id: "scrape",  label: "Scraping app",             sub: "Capturing UI context with Steel.dev" },
+      { id: "script",  label: "Drafting Script",          sub: "Gemini 3 Flash writing cinematic prompts" },
+      { id: "video",   label: "Rendering Video",          sub: "Veo 3.1 generating high-fidelity output" },
+      { id: "upload",  label: "Finalizing",               sub: "Uploading MP4s to Cloud Storage" },
+    ];
+
+    const stepsEl = document.getElementById("pipeline-steps");
+    const progressEl = document.getElementById("pipeline-progress");
+    const pctEl = document.getElementById("pipeline-pct");
+    const logBody = document.getElementById("build-log-body");
+    const statusDot = document.querySelector(".build-status-dot");
+    const statusText = document.getElementById("build-status-text");
+    const browserUrl = document.getElementById("browser-url");
+    const browserSpinner = document.getElementById("browser-spinner");
+    const browserPlaceholder = document.getElementById("browser-placeholder");
+    const browserScreenshot = document.getElementById("browser-screenshot");
+
+    const params = new URLSearchParams(window.location.search);
+    const targetUrl = params.get("target_url") || "https://calcgpt.ai";
+
+    // Render steps
+    STEPS.forEach((step, i) => {
+      const el = document.createElement("div");
+      el.className = "pipeline-step pipeline-step--pending";
+      el.id = `step-${step.id}`;
+      el.innerHTML = `
+        <div class="step-indicator">
+          <div class="step-dot">
+            <svg class="step-check" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <span class="step-num">${i + 1}</span>
+          </div>
+          ${i < STEPS.length - 1 ? '<div class="step-connector"></div>' : ''}
+        </div>
+        <div class="step-body">
+          <span class="step-label">${step.label}</span>
+          <span class="step-sub">${step.sub}</span>
+        </div>
+        <div class="step-status-badge step-badge--pending">Pending</div>
+      `;
+      stepsEl.appendChild(el);
+    });
+
+    // ── Log helper ─────────────────────────────────────────
+    function addLog(text, level = "info") {
+      const entry = document.createElement("div");
+      
+      const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      entry.className = `log-entry log-entry--${level}`;
+      entry.innerHTML = `<span class="log-ts">${ts}</span><span class="log-text">${esc(text)}</span>`;
+
+      logBody.appendChild(entry);
+      logBody.scrollTop = logBody.scrollHeight;
+    }
+
+    // ── Step state ─────────────────────────────────────────
+    function setStep(stepId, state) {
+      const el = document.getElementById(`step-${stepId}`);
+      if (!el) return;
+      el.className = `pipeline-step pipeline-step--${state}`;
+      const badge = el.querySelector(".step-status-badge");
+      if (badge) {
+        badge.className = `step-status-badge step-badge--${state}`;
+        badge.textContent = state === "active" ? "Running" : state === "done" ? "Done" : state === "error" ? "Error" : "Pending";
+      }
+    }
+
+    function setProgress(pct) {
+      progressEl.style.width = `${pct}%`;
+      pctEl.textContent = `${Math.round(pct)}%`;
+    }
+
+    // ── WebSocket stream ────────────────
+    let ws = null;
+
+    async function startBuild() {
+      browserSpinner.style.display = "block";
+      addLog("Connecting to marketing pipeline…");
+
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      ws = new WebSocket(`${protocol}//${window.location.host}/api/ws/marketing/reels`);
+
+      ws.onopen = async () => {
+        let token = "";
+        try { token = await auth.currentUser?.getIdToken() || ""; } catch {}
+        ws.send(JSON.stringify({ target_url: targetUrl, token }));
+      };
+
+      ws.onmessage = (event) => {
+        let ev;
+        try { ev = JSON.parse(event.data); } catch { return; }
+        handleEvent(ev);
+      };
+
+      ws.onerror = (err) => {
+        addLog(`WebSocket error.`, "error");
+        statusDot.className = "build-status-dot build-status-dot--error";
+        statusText.textContent = "Error";
+      };
+
+      ws.onclose = () => {
+        if (statusText.textContent !== "Complete") {
+          addLog("WebSocket disconnected.", "error");
+          statusDot.className = "build-status-dot build-status-dot--error";
+          statusText.textContent = "Disconnected";
+        }
+      };
+    }
+
+    function handleEvent(ev) {
+      switch (ev.type) {
+        case "step_start":
+          setStep(ev.step, "active");
+          setProgress(ev.progress || 0);
+          addLog(`Started: ${ev.label}`);
+          break;
+        case "step_done":
+          setStep(ev.step, "done");
+          setProgress(ev.progress || 0);
+          addLog(`Completed: ${ev.label}`, "success");
+          break;
+        case "log":
+          addLog(ev.text, ev.level || "info");
+          break;
+        case "screenshot":
+          browserPlaceholder.style.display = "none";
+          browserScreenshot.style.display = "block";
+          browserScreenshot.src = `data:image/png;base64,${ev.data}`;
+          break;
+        case "browser_loading":
+          browserSpinner.style.display = ev.loading ? "block" : "none";
+          break;
+        case "done":
+        case "ws_done":
+          if (ev.type === "done") {
+             statusDot.className = "build-status-dot build-status-dot--done";
+             statusText.textContent = "Complete";
+             browserSpinner.style.display = "none";
+             setProgress(100);
+             addLog("Videos successfully generated!", "success");
+
+             if (ev.urls && ev.urls.length > 0) {
+                showReelsCarousel(ev.urls);
+             }
+          }
+          if (ev.type === "ws_done" && ws) { ws.close(); }
+          break;
+      }
+    }
+
+    function showReelsCarousel(urls) {
+      const container = document.getElementById("reels-carousel-container");
+      const track = document.getElementById("reels-carousel-track");
+      
+      track.innerHTML = "";
+      urls.forEach(url => {
+        const card = document.createElement("div");
+        card.className = "reel-card";
+        card.innerHTML = `<video class="reel-video" src="${url}" controls autoplay loop muted playsinline></video>`;
+        track.appendChild(card);
+      });
+
+      // Hide browser chrome
+      document.getElementById("browser-chrome-el").style.display = "none";
+      // Show carousel
+      container.style.display = "flex";
+    }
+
+    function esc(s) {
+      return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    onAuthStateChanged(auth, (u) => {
+      startBuild();
+    });
+  </script>
+
+</body>
+</html>
