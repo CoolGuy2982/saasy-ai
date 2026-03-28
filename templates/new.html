@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Saasy — New Business</title>
+  <link rel="stylesheet" href="/static/css/new.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+</head>
+<body>
+
+  <a href="/dashboard" class="back-link">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="15 18 9 12 15 6"/>
+    </svg>
+    Dashboard
+  </a>
+
+  <div class="layout" id="layout">
+
+    <!-- ── Chat ── -->
+    <div class="chat" id="chat">
+
+      <div class="chat-spacer"></div>
+
+      <div class="hero" id="hero">
+        <div class="hero-logo">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <rect x="0"  y="0"  width="13" height="13" rx="3" fill="currentColor"/>
+            <rect x="15" y="0"  width="13" height="13" rx="3" fill="currentColor" opacity="0.25"/>
+            <rect x="0"  y="15" width="13" height="13" rx="3" fill="currentColor" opacity="0.25"/>
+            <rect x="15" y="15" width="13" height="13" rx="3" fill="currentColor"/>
+          </svg>
+        </div>
+        <h1 class="hero-headline">What are we building?</h1>
+        <p class="hero-sub">Describe your idea. Saasy will interrogate it, research it, and draft your product vision live.</p>
+      </div>
+
+      <div class="messages-scroll" id="messages-scroll">
+        <div class="messages" id="messages"></div>
+      </div>
+
+      <div class="input-area">
+        <div class="input-box" id="input-box">
+          <textarea id="input" placeholder="Describe your idea…" rows="1" autocomplete="off" spellcheck="true"></textarea>
+          <button id="send-btn" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="20" x2="12" y2="4"/><polyline points="5 11 12 4 19 11"/>
+            </svg>
+          </button>
+        </div>
+        <p class="input-hint">Searches the web in real time · Builds your PRD as you chat</p>
+      </div>
+
+      <div class="chat-spacer"></div>
+
+    </div>
+
+    <!-- ── Canvas ── -->
+    <div class="canvas" id="canvas">
+      <div class="canvas-toolbar">
+        <div class="canvas-toolbar-left">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="color:var(--g4)">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <span id="canvas-name">Product Vision</span>
+        </div>
+        <div class="canvas-toolbar-right">
+          <a class="build-btn" id="build-btn" href="/build" style="display:none">
+            Build
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+            </svg>
+          </a>
+          <button class="icon-btn" id="canvas-close">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="canvas-doc" id="canvas-doc">
+        <div class="canvas-empty-state" id="canvas-empty">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" style="color:var(--g3)">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/>
+          </svg>
+          <p>Your product vision will take shape here as you chat.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module">
+    import { initializeApp }       from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+
+    initializeApp({
+      apiKey: "AIzaSyBsPAga9Hd_71js7lKGlvASrY8b-toWa8M",
+      authDomain: "saasy-aa123.firebaseapp.com",
+      projectId: "saasy-aa123",
+      storageBucket: "saasy-aa123.firebasestorage.app",
+      messagingSenderId: "421734088338",
+      appId: "1:421734088338:web:fc2143d4c765fcad0ef04b"
+    });
+
+    const auth = getAuth();
+    // Generate a stable business ID for this session
+    const businessId = 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+    onAuthStateChanged(auth, u => { if (!u) location.href = "/"; });
+
+    async function authHeaders() {
+      const user = auth.currentUser;
+      if (!user) return { 'Content-Type': 'application/json' };
+      const token = await user.getIdToken();
+      return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+    }
+
+    marked.setOptions({ breaks: true, gfm: true });
+
+    // ── State ──────────────────────────────────────────
+    let history   = [];   // [{role:"user"|"assistant", content:"..."}]
+    let heroGone  = false;
+    let busy      = false;
+
+    // ── DOM ────────────────────────────────────────────
+    const layout     = document.getElementById('layout');
+    const chat       = document.getElementById('chat');
+    const hero       = document.getElementById('hero');
+    const scroll     = document.getElementById('messages-scroll');
+    const msgs       = document.getElementById('messages');
+    const inp        = document.getElementById('input');
+    const sendBtn    = document.getElementById('send-btn');
+    const canvasDoc  = document.getElementById('canvas-doc');
+    const canvasName = document.getElementById('canvas-name');
+    const buildBtn   = document.getElementById('build-btn');
+    const closeBtn   = document.getElementById('canvas-close');
+
+    // ── Input ──────────────────────────────────────────
+    inp.addEventListener('input', () => {
+      inp.style.height = 'auto';
+      inp.style.height = Math.min(inp.scrollHeight, 140) + 'px';
+      sendBtn.disabled = !inp.value.trim() || busy;
+    });
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!sendBtn.disabled) go(); }
+    });
+    sendBtn.addEventListener('click', go);
+    closeBtn.addEventListener('click', () => { layout.classList.remove('split'); });
+
+    // ── Send ───────────────────────────────────────────
+    async function go() {
+      const text = inp.value.trim();
+      if (!text || busy) return;
+      busy = true;
+      sendBtn.disabled = true;
+      inp.value = '';
+      inp.style.height = 'auto';
+
+      if (!heroGone) {
+        hero.classList.add('out');
+        chat.classList.add('has-messages');
+        heroGone = true;
+      }
+
+      addUserBubble(text);
+
+      const row = document.createElement('div');
+      row.className = 'row row-ai';
+      msgs.appendChild(row);
+
+      const searchStatus = makeSearchStatus();
+      row.appendChild(searchStatus);
+      sink();
+
+      let bubbleEl = null;
+      let fullText = '';
+      let gotText  = false;
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: await authHeaders(),
+          body: JSON.stringify({ message: text, history, businessId }),
+        });
+        const reader = res.body.getReader();
+        const dec    = new TextDecoder();
+        let buf      = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            let ev;
+            try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+
+            if (ev.type === 'text') {
+              if (!gotText) {
+                gotText = true;
+                searchStatus.classList.add('search-status-fading');
+                bubbleEl = document.createElement('div');
+                bubbleEl.className = 'bubble bubble-ai';
+                row.appendChild(bubbleEl);
+              }
+              fullText += ev.text;
+              bubbleEl.innerHTML = marked.parse(fullText);
+              sink();
+            }
+
+            else if (ev.type === 'done') {
+              history.push({ role: 'user',      content: text });
+              history.push({ role: 'assistant', content: fullText });
+
+              if (bubbleEl) bubbleEl.innerHTML = marked.parse(fullText);
+
+              // Search status → show query only
+              finalizeSearchStatus(searchStatus, ev.search_queries || []);
+
+              // Sources pill below the bubble
+              const sources = ev.sources || [];
+              if (sources.length) {
+                row.appendChild(makeSourcesPill(sources));
+              }
+
+              sink();
+              refreshCanvas();
+            }
+
+            else if (ev.type === 'error') {
+              searchStatus.remove();
+              addErr(row, ev.message || 'Something went wrong.');
+            }
+          }
+        }
+      } catch {
+        searchStatus.remove();
+        addErr(row, 'Connection lost. Please try again.');
+      } finally {
+        busy = false;
+        sendBtn.disabled = !inp.value.trim();
+        inp.focus();
+      }
+    }
+
+    // ── Canvas ─────────────────────────────────────────
+    async function refreshCanvas() {
+      if (history.length === 0) return;
+      if (!layout.classList.contains('split')) layout.classList.add('split');
+
+      canvasDoc.innerHTML = '<div class="canvas-loading"><span></span><span></span><span></span></div>';
+
+      try {
+        const res = await fetch('/api/prd', {
+          method: 'POST',
+          headers: await authHeaders(),
+          body: JSON.stringify({ history, businessId }),
+        });
+        const { markdown } = await res.json();
+        if (!markdown) return;
+
+        const m = markdown.match(/^#\s+(.+)$/m);
+        const name = m ? m[1] : 'Product Vision';
+        canvasName.textContent = name;
+        sessionStorage.setItem('saasy_prd', markdown);
+        buildBtn.href = `/build?name=${encodeURIComponent(name)}`;
+        buildBtn.style.display = 'inline-flex';
+
+        canvasDoc.innerHTML = marked.parse(markdown);
+        [...canvasDoc.children].forEach((el, i) => {
+          el.style.animationDelay = `${i * 0.05}s`;
+          el.classList.add('doc-fade');
+        });
+
+      } catch {
+        canvasDoc.innerHTML = '<p class="canvas-err">Could not generate product vision.</p>';
+      }
+    }
+
+    // ── DOM helpers ────────────────────────────────────
+    function addUserBubble(text) {
+      const row = document.createElement('div');
+      row.className = 'row row-user';
+      row.innerHTML = `<div class="bubble bubble-user">${esc(text)}</div>`;
+      msgs.appendChild(row);
+      sink();
+    }
+
+    function addErr(row, msg) {
+      const p = document.createElement('p');
+      p.className = 'err-msg';
+      p.textContent = msg;
+      row.appendChild(p);
+      sink();
+    }
+
+    function makeSearchStatus() {
+      const el = document.createElement('div');
+      el.className = 'search-status';
+      el.innerHTML = '<span class="search-spinner-sm"></span><span class="search-label">Searching the web…</span>';
+      return el;
+    }
+
+    function finalizeSearchStatus(el, queries) {
+      const spinner = el.querySelector('.search-spinner-sm');
+      const label   = el.querySelector('.search-label');
+      if (spinner) spinner.remove();
+      if (queries.length && label) {
+        const q = queries[0];
+        label.textContent = q.length > 54 ? q.slice(0, 54) + '…' : q;
+        label.style.fontStyle = 'normal';
+        label.style.color = 'var(--g3)';
+      } else if (label) {
+        label.remove();
+      }
+      el.classList.add('search-status-done');
+    }
+
+    // ── Sources pill ───────────────────────────────────
+    function makeSourcesPill(sources) {
+      const pill = document.createElement('div');
+      pill.className = 'sources-pill';
+
+      // ── Header ──
+      const header = document.createElement('div');
+      header.className = 'sources-header';
+
+      // Stacked favicons (max 4)
+      const stack = document.createElement('div');
+      stack.className = 'sources-fav-stack';
+      sources.slice(0, 4).forEach((s, i) => {
+        const domain = srcDomain(s);
+        const wrap = document.createElement('span');
+        wrap.className = 'fav-wrap';
+        wrap.style.cssText = `z-index:${10 - i};animation-delay:${i * 0.06}s`;
+        const img = document.createElement('img');
+        img.className = 'fav-img';
+        img.src = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+        img.alt = domain;
+        img.onerror = () => { img.style.display = 'none'; wrap.classList.add('fav-fallback'); wrap.textContent = (domain[0] || '?').toUpperCase(); };
+        wrap.appendChild(img);
+        stack.appendChild(wrap);
+      });
+      header.appendChild(stack);
+
+      const label = document.createElement('span');
+      label.className = 'sources-label';
+      label.textContent = sources.length === 1 ? '1 source' : `${sources.length} sources`;
+      header.appendChild(label);
+
+      const chevron = makeSVG('M6 9l6 6 6-6');
+      chevron.className = 'sources-chevron';
+      header.appendChild(chevron);
+
+      pill.appendChild(header);
+
+      // ── Body ──
+      const body = document.createElement('div');
+      body.className = 'sources-body';
+      const list = document.createElement('div');
+      list.className = 'sources-list';
+
+      sources.forEach(s => {
+        const domain = srcDomain(s);
+        const item = document.createElement('a');
+        item.className = 'source-item';
+        item.href = s.url;
+        item.target = '_blank';
+        item.rel = 'noopener noreferrer';
+
+        const fav = document.createElement('span');
+        fav.className = 'source-fav';
+        const img = document.createElement('img');
+        img.src = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+        img.alt = domain;
+        img.onerror = () => { img.style.display = 'none'; fav.textContent = (domain[0] || '?').toUpperCase(); };
+        fav.appendChild(img);
+        item.appendChild(fav);
+
+        const info = document.createElement('span');
+        info.className = 'source-info';
+        const t = document.createElement('span');
+        t.className = 'source-title';
+        t.textContent = s.title || domain;
+        const d = document.createElement('span');
+        d.className = 'source-domain';
+        d.textContent = domain;
+        info.appendChild(t);
+        info.appendChild(d);
+        item.appendChild(info);
+
+        const arr = makeSVG('M5 12h14 M12 5l7 7-7 7');
+        arr.className = 'source-arrow';
+        item.appendChild(arr);
+
+        list.appendChild(item);
+      });
+
+      body.appendChild(list);
+      pill.appendChild(body);
+
+      header.addEventListener('click', () => pill.classList.toggle('open'));
+      return pill;
+    }
+
+    function srcDomain(s) {
+      // Grounding API returns proxy URIs; the title is the real domain
+      if (s.title && s.title.includes('.') && !s.title.includes(' ') && s.title.length < 60) {
+        return s.title.replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '');
+      }
+      try { return new URL(s.url).hostname.replace(/^www\./, ''); } catch { return s.title || '?'; }
+    }
+
+    function makeSVG(pathD) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('width', '12'); svg.setAttribute('height', '12');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('fill', 'none');
+      svg.setAttribute('stroke', 'currentColor');
+      svg.setAttribute('stroke-width', '2.2');
+      svg.setAttribute('stroke-linecap', 'round');
+      svg.setAttribute('stroke-linejoin', 'round');
+      pathD.split(' M').forEach((d, i) => {
+        const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        p.setAttribute('d', (i === 0 ? '' : 'M') + d);
+        svg.appendChild(p);
+      });
+      return svg;
+    }
+
+    function sink() { scroll.scrollTop = scroll.scrollHeight; }
+    function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  </script>
+</body>
+</html>

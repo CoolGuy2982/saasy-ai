@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+python-dotenv
+google-genai>=1.55.0
+firebase-admin
+steel-sdk
+playwright
