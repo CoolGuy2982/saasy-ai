@@ -1680,75 +1680,243 @@ img { display: block; max-width: 100%; }
 .log-entry--error .log-text { color: #b91c1c; }
 .log-entry--info .log-text { color: var(--gray-600); }
 
+/* Playwright Click Area (Remote Viewport) */
+#browser-screenshot {
+  cursor: crosshair;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+/* ── Interactive Chat Overlay ── */
+.interactive-chat-overlay {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+  max-width: 540px;
+  background: rgba(250, 250, 250, 0.82);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 24px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.12), 0 0 0 1px rgba(255,255,255,0.7) inset;
+  padding: 6px 6px 6px 16px;
+  z-index: 100;
+  animation: slide-up-chat 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slide-up-chat {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+#chat-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#chat-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  font-size: 14.5px;
+  color: var(--black);
+  padding: 8px 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  letter-spacing: -0.1px;
+}
+
+#chat-input::placeholder { color: var(--gray-400); }
+
+#chat-submit {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #0071e3;
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.2s, background 0.2s;
+  border: none;
+  cursor: pointer;
+}
+
+#chat-submit:hover {
+  background: #0077ed;
+  transform: scale(1.05);
+}
+
+/* ── Thought block ── */
+.log-thought {
+  margin: 6px 0;
+  padding: 10px 12px;
+  background: #fafaf5;
+  border: 1px solid #e8e8d8;
+  border-left: 3px solid #c8b96e;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--gray-600);
+  font-style: italic;
+}
+
+.log-thought-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #a0893a;
+  margin-bottom: 4px;
+  font-style: normal;
+}
+
+.log-thought-text {
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Log Cards ── */
+.log-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--white);
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  border: 1px solid var(--gray-150);
+  animation: slide-in-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  margin-bottom: 6px;
+}
+
+.log-card.user {
+  background: #f5f5f7;
+  border-color: #d2d2d7;
+}
+
+.log-card-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #f5f5f7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--black);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.log-card.click .log-card-icon { background: #e8f2ff; color: #0071e3; }
+.log-card.type .log-card-icon { background: #fdf2f8; color: #ec4899; }
+.log-card.nav .log-card-icon { background: #f0fdf4; color: #22c55e; }
+.log-card.scroll .log-card-icon { background: #fefce8; color: #eab308; }
+.log-card.ask .log-card-icon { background: #f3e8ff; color: #a855f7; }
+.log-card.user .log-card-icon { background: #e5e5ea; color: #1d1d1f; }
+
+.log-card-content {
+  flex: 1;
+  font-size: 13px;
+  color: var(--gray-800);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.log-card-title {
+  font-weight: 600;
+  margin-bottom: 3px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gray-500);
+}
+
+@keyframes slide-in-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* Build right */
 .build-right {
   flex: 1;
   display: flex;
   flex-direction: column;
+  align-items: center; /* Center the browser chrome! */
+  justify-content: center;
   overflow: hidden;
-  padding: 16px;
+  padding: 32px;
   background: var(--gray-50);
   min-width: 0;
 }
 
 /* Browser chrome */
 .browser-chrome {
-  flex: 1;
+  width: 100%;
+  max-width: 1200px;
   display: flex;
   flex-direction: column;
-  background: var(--white);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--gray-150);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+  background: #fdfdfd;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08); /* Apple crisp thin border */
+  box-shadow: 0 20px 60px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.02);
   overflow: hidden;
 }
 
 .browser-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 14px;
-  height: 42px;
-  background: var(--gray-50);
-  border-bottom: 1px solid var(--gray-150);
+  gap: 16px;
+  padding: 0 16px;
+  height: 52px; /* standard mac titlebar height */
+  background: #fdfdfd; 
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   flex-shrink: 0;
 }
 
 .browser-dots {
   display: flex;
-  gap: 5px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
 .browser-dots span {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background: var(--gray-200);
+  border: 1px solid rgba(0,0,0,0.1);
 }
+.dot-red { background: #ff5f56; }
+.dot-yellow { background: #ffbd2e; }
+.dot-green { background: #27c93f; }
 
 .browser-url-wrap {
   flex: 1;
+  max-width: 500px;
+  margin: 0 auto;
   display: flex;
   align-items: center;
-  gap: 7px;
-  height: 28px;
-  background: var(--white);
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-xs);
-  padding: 0 10px;
-  color: var(--gray-400);
-  min-width: 0;
+  justify-content: center;
+  gap: 8px;
+  height: 32px;
+  background: rgba(0,0,0,0.04);
+  border-radius: 6px;
+  padding: 0 12px;
+  color: var(--gray-500);
 }
 
 .browser-url {
-  font-size: 12px;
-  color: var(--gray-500);
+  font-size: 13px;
+  color: var(--gray-800);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
-  letter-spacing: 0.05px;
+  letter-spacing: -0.1px;
 }
 
 .browser-bar-actions {
@@ -1770,7 +1938,8 @@ img { display: block; max-width: 100%; }
 }
 
 .browser-viewport {
-  flex: 1;
+  width: 100%;
+  aspect-ratio: 16 / 10;
   position: relative;
   overflow: hidden;
   background: var(--white);

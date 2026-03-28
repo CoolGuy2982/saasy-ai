@@ -87,22 +87,22 @@
     <!-- Right: Browser view -->
     <div class="build-right">
 
-      <div class="browser-chrome">
-        <div class="browser-bar">
-          <div class="browser-dots">
-            <span></span><span></span><span></span>
+        <!-- Browser chrome -->
+        <div class="browser-chrome">
+          <div class="browser-bar">
+            <div class="browser-dots">
+              <span class="dot-red"></span>
+              <span class="dot-yellow"></span>
+              <span class="dot-green"></span>
+            </div>
+            <div class="browser-url-wrap">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span class="browser-url" id="browser-url">about:blank</span>
+            </div>
+            <div class="browser-bar-actions">
+              <div class="browser-spinner" id="browser-spinner"></div>
+            </div>
           </div>
-          <div class="browser-url-wrap">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-            </svg>
-            <span class="browser-url" id="browser-url">about:blank</span>
-          </div>
-          <div class="browser-bar-actions">
-            <div class="browser-spinner" id="browser-spinner"></div>
-          </div>
-        </div>
 
         <div class="browser-viewport" id="browser-viewport">
           <div class="browser-placeholder" id="browser-placeholder">
@@ -116,6 +116,15 @@
             <p class="browser-placeholder-sub">The AI agent will open a browser session here.</p>
           </div>
           <img class="browser-screenshot" id="browser-screenshot" src="" alt="Browser view" />
+          
+          <div class="interactive-chat-overlay" id="chat-overlay" style="display: none;">
+            <form id="chat-form">
+              <input type="text" id="chat-input" placeholder="Message the AI agent to take control…" autocomplete="off">
+              <button type="submit" id="chat-submit" title="Send message">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </form>
+          </div>
         </div>
       </div>
 
@@ -191,11 +200,51 @@
     });
 
     // ── Log helper ─────────────────────────────────────────
-    function addLog(text, type = "info") {
-      const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const ICONS = {
+      click_at: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>',
+      type_text_at: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>',
+      navigate: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+      scroll_document: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="7"/><circle cx="12" cy="10" r="2"/></svg>',
+      ask: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>',
+      user: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+      default: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
+    };
+
+    function addLog(text, level = "info") {
       const entry = document.createElement("div");
-      entry.className = `log-entry log-entry--${type}`;
-      entry.innerHTML = `<span class="log-ts">${ts}</span><span class="log-text">${esc(text)}</span>`;
+      
+      // Parse Computer Use tool logs
+      if (text.startsWith("  → ")) {
+        const tool = text.slice(4).trim();
+        let icon = ICONS.default, cat = "default", title = "Action";
+        if (tool === "click_at") { icon = ICONS.click_at; cat = "click"; title = "Coordinates Clicked"; }
+        else if (tool === "type_text_at" || tool === "key_combination") { icon = ICONS.type_text_at; cat = "type"; title = "Typing Details"; }
+        else if (tool === "navigate") { icon = ICONS.navigate; cat = "nav"; title = "Page Change"; }
+        else if (tool === "scroll_document" || tool === "scroll_at") { icon = ICONS.scroll_document; cat = "scroll"; title = "Scrolled"; }
+        
+        entry.className = `log-card ${cat}`;
+        entry.innerHTML = `<div class="log-card-icon">${icon}</div><div class="log-card-content"><div class="log-card-title">${title}</div><div>${esc(tool)}</div></div>`;
+      } 
+      else if (level === "thought") {
+        entry.className = "log-thought";
+        const thoughtText = text.startsWith("💭 ") ? text.slice(3) : text;
+        entry.innerHTML = `<div class="log-thought-label">Thinking</div><div class="log-thought-text">${esc(thoughtText)}</div>`;
+      }
+      else if (level === "agent_ask") {
+        entry.className = "log-card ask";
+        entry.innerHTML = `<div class="log-card-icon">${ICONS.ask}</div><div class="log-card-content"><div class="log-card-title">Agent Question</div><div>${esc(text)}</div></div>`;
+      }
+      else if (level === "user_msg") {
+        entry.className = "log-card user";
+        entry.innerHTML = `<div class="log-card-icon">${ICONS.user}</div><div class="log-card-content"><div class="log-card-title">You</div><div>${esc(text)}</div></div>`;
+      }
+      else {
+        // Standard log format
+        const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        entry.className = `log-entry log-entry--${level}`;
+        entry.innerHTML = `<span class="log-ts">${ts}</span><span class="log-text">${esc(text)}</span>`;
+      }
+
       logBody.appendChild(entry);
       logBody.scrollTop = logBody.scrollHeight;
     }
@@ -217,9 +266,10 @@
       pctEl.textContent = `${Math.round(pct)}%`;
     }
 
-    // ── SSE stream from /api/build ─────────────────────────
+    // ── WebSocket stream from /api/ws/build ────────────────
+    let ws = null;
+
     async function startBuild() {
-      // PRD text stored in sessionStorage by new.html when Build is clicked
       const prdText = sessionStorage.getItem("saasy_prd") || "";
       if (!prdText && !appName) {
         addLog("No PRD found. Returning to dashboard.", "error");
@@ -228,38 +278,34 @@
       }
 
       browserSpinner.style.display = "block";
-      addLog("Connecting to build agent…");
+      addLog("Connecting to build agent via WebSocket…");
 
-      try {
-        const res = await fetch("/api/build", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prd_text: prdText, app_name: appName }),
-        });
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      ws = new WebSocket(`${protocol}//${window.location.host}/api/ws/build`);
 
-        const reader = res.body.getReader();
-        const dec = new TextDecoder();
-        let buf = "";
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ prd_text: prdText, app_name: appName }));
+      };
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += dec.decode(value, { stream: true });
-          const lines = buf.split("\n");
-          buf = lines.pop();
+      ws.onmessage = (event) => {
+        let ev;
+        try { ev = JSON.parse(event.data); } catch { return; }
+        handleEvent(ev);
+      };
 
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            let ev;
-            try { ev = JSON.parse(line.slice(6)); } catch { continue; }
-            handleEvent(ev);
-          }
-        }
-      } catch (err) {
-        addLog(`Connection error: ${err.message}`, "error");
+      ws.onerror = (err) => {
+        addLog(`WebSocket error.`, "error");
         statusDot.className = "build-status-dot build-status-dot--error";
         statusText.textContent = "Error";
-      }
+      };
+
+      ws.onclose = () => {
+        if (statusText.textContent !== "Complete") {
+          addLog("WebSocket disconnected.", "error");
+          statusDot.className = "build-status-dot build-status-dot--error";
+          statusText.textContent = "Disconnected";
+        }
+      };
     }
 
     function handleEvent(ev) {
@@ -286,6 +332,7 @@
         case "screenshot":
           browserPlaceholder.style.display = "none";
           browserScreenshot.style.display = "block";
+          document.getElementById("chat-overlay").style.display = "block";
           browserScreenshot.src = `data:image/png;base64,${ev.data}`;
           break;
         case "url":
@@ -294,23 +341,62 @@
         case "browser_loading":
           browserSpinner.style.display = ev.loading ? "block" : "none";
           break;
+        case "ask_user":
+          document.getElementById("chat-input").focus();
+          break;
         case "done":
+        case "ws_done":
           statusDot.className = "build-status-dot build-status-dot--done";
           statusText.textContent = "Complete";
           browserSpinner.style.display = "none";
           setProgress(100);
           addLog("Build complete! Your app is live.", "success");
-          if (ev.url) {
-            addLog(`Deployed at: ${ev.url}`, "success");
+          if (ev.url || ev.type === "ws_done") {
+            addLog(`Deployed at: ${ev.url || browserUrl.textContent}`, "success");
           }
+          if (ws) { ws.close(); }
           break;
       }
     }
 
+    let isPaused = false;
     document.getElementById("build-pause").addEventListener("click", () => {
-      addLog("Build paused by user.");
-      statusDot.className = "build-status-dot build-status-dot--paused";
-      statusText.textContent = "Paused";
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      isPaused = !isPaused;
+      if (isPaused) {
+        ws.send(JSON.stringify({ type: "pause" }));
+        statusDot.className = "build-status-dot build-status-dot--paused";
+        statusText.textContent = "Paused";
+        document.getElementById("build-pause").textContent = "Resume AI";
+      } else {
+        ws.send(JSON.stringify({ type: "resume" }));
+        statusDot.className = "build-status-dot build-status-dot--active";
+        statusText.textContent = "Running";
+        document.getElementById("build-pause").textContent = "Pause AI";
+      }
+    });
+
+    // Remote Click Handler (Translate Image coordinates -> 1440x900 viewport)
+    browserScreenshot.addEventListener("click", (e) => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const rect = browserScreenshot.getBoundingClientRect();
+      const scaleX = 1440 / rect.width;
+      const scaleY = 900 / rect.height;
+      const x = Math.round((e.clientX - rect.left) * scaleX);
+      const y = Math.round((e.clientY - rect.top) * scaleY);
+      ws.send(JSON.stringify({ type: "click", x, y }));
+      // Optional: draw a ripple where they clicked
+      addLog(`Remote Click sent (${x}, ${y})`, "info");
+    });
+
+    // Chat Interface Handler
+    document.getElementById("chat-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const input = document.getElementById("chat-input");
+      const text = input.value.trim();
+      if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({ type: "chat", text }));
+      input.value = "";
     });
 
     function esc(s) {

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Saasy — New Business</title>
-  <link rel="stylesheet" href="/static/css/new.css" />
+  <link rel="stylesheet" href="/static/css/new.css?v=2" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -12,17 +12,22 @@
 </head>
 <body>
 
-  <a href="/dashboard" class="back-link">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <polyline points="15 18 9 12 15 6"/>
-    </svg>
-    Dashboard
-  </a>
-
   <div class="layout" id="layout">
 
     <!-- ── Chat ── -->
     <div class="chat" id="chat">
+      <div class="chat-header">
+        <a href="/dashboard" class="back-link-inline">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+          Dashboard
+        </a>
+        <button class="new-convo-btn" onclick="window.location.href='/new'">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+          New Idea
+        </button>
+      </div>
 
       <div class="chat-spacer"></div>
 
@@ -111,10 +116,21 @@
     });
 
     const auth = getAuth();
-    // Generate a stable business ID for this session
-    const businessId = 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    // Use stable business ID from URL or generate a new one
+    const urlParams = new URLSearchParams(window.location.search);
+    let businessId = urlParams.get('id');
+    if (!businessId) {
+      businessId = 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      window.history.replaceState(null, '', '?id=' + businessId);
+    }
 
-    onAuthStateChanged(auth, u => { if (!u) location.href = "/"; });
+    onAuthStateChanged(auth, async u => {
+      if (!u) {
+        location.href = "/";
+        return;
+      }
+      await loadHistory();
+    });
 
     async function authHeaders() {
       const user = auth.currentUser;
@@ -154,6 +170,45 @@
     });
     sendBtn.addEventListener('click', go);
     closeBtn.addEventListener('click', () => { layout.classList.remove('split'); });
+
+    // ── Load History ───────────────────────────────────
+    async function loadHistory() {
+      try {
+        const res = await fetch(`/api/history?bid=${businessId}`, {
+          headers: await authHeaders()
+        });
+        const data = await res.json();
+        if (data.messages && data.messages.length > 0) {
+          heroGone = true;
+          hero.style.display = 'none';
+          chat.classList.add('has-messages');
+
+          for (const m of data.messages) {
+            history.push({ role: m.role, content: m.content });
+            if (m.role === 'user') {
+              addUserBubble(m.content);
+            } else {
+              const row = document.createElement('div');
+              row.className = 'row row-ai';
+              msgs.appendChild(row);
+
+              const bubble = document.createElement('div');
+              bubble.className = 'bubble bubble-ai';
+              bubble.innerHTML = marked.parse(m.content);
+              row.appendChild(bubble);
+
+              if (m.sources && m.sources.length) {
+                row.appendChild(makeSourcesPill(m.sources));
+              }
+            }
+          }
+          sink();
+          refreshCanvas();
+        }
+      } catch (e) {
+        console.error("Failed to load history", e);
+      }
+    }
 
     // ── Send ───────────────────────────────────────────
     async function go() {
@@ -219,6 +274,10 @@
               sink();
             }
 
+            else if (ev.type === 'search_query') {
+              updateSearchStatusRealtime(searchStatus, ev.queries || [], ev.sources || []);
+            }
+
             else if (ev.type === 'done') {
               history.push({ role: 'user',      content: text });
               history.push({ role: 'assistant', content: fullText });
@@ -257,9 +316,11 @@
     // ── Canvas ─────────────────────────────────────────
     async function refreshCanvas() {
       if (history.length === 0) return;
-      if (!layout.classList.contains('split')) layout.classList.add('split');
 
-      canvasDoc.innerHTML = '<div class="canvas-loading"><span></span><span></span><span></span></div>';
+      const isSplit = layout.classList.contains('split');
+      if (isSplit) {
+        canvasDoc.innerHTML = '<div class="canvas-loading"><span></span><span></span><span></span></div>';
+      }
 
       try {
         const res = await fetch('/api/prd', {
@@ -268,7 +329,16 @@
           body: JSON.stringify({ history, businessId }),
         });
         const { markdown } = await res.json();
-        if (!markdown) return;
+        
+        if (!markdown || markdown.includes('NOT_READY')) {
+          if (isSplit) {
+            // Restore empty state if we were open for some reason
+            canvasDoc.innerHTML = '<div class="canvas-empty-state"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" style="color:var(--g3)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg><p>Still gathering enough context to build your product vision.</p></div>';
+          }
+          return;
+        }
+
+        if (!isSplit) layout.classList.add('split');
 
         const m = markdown.match(/^#\s+(.+)$/m);
         const name = m ? m[1] : 'Product Vision';
@@ -284,7 +354,9 @@
         });
 
       } catch {
-        canvasDoc.innerHTML = '<p class="canvas-err">Could not generate product vision.</p>';
+        if (isSplit) {
+            canvasDoc.innerHTML = '<p class="canvas-err">Could not generate product vision.</p>';
+        }
       }
     }
 
@@ -308,42 +380,77 @@
     function makeSearchStatus() {
       const el = document.createElement('div');
       el.className = 'search-status';
-      el.innerHTML = '<span class="search-spinner-sm"></span><span class="search-label">Searching the web…</span>';
+      el.innerHTML = `
+        <div class="search-status-main">
+          <svg class="search-spark" viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+          </svg>
+          <span class="search-label">Searching the web...</span>
+        </div>
+        <div class="search-rt-sources"></div>
+      `;
       return el;
     }
 
+    function updateSearchStatusRealtime(el, queries, sources) {
+      if (queries.length) {
+        const label = el.querySelector('.search-label');
+        if (label) {
+          label.textContent = queries[0];
+          label.classList.remove('pulsing'); // We'll conditionally add/remove classes
+        }
+      }
+      
+      if (sources && sources.length) {
+        const wrap = el.querySelector('.search-rt-sources');
+        if (wrap && wrap.children.length === 0) {
+            // Generate icons just once for the ones that arrive
+            wrap.innerHTML = '';
+            sources.slice(0, 4).forEach((s, i) => {
+              const domain = srcDomain(s);
+              const img = document.createElement('img');
+              img.className = 'rt-fav';
+              img.src = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+              img.style.animationDelay = `${i * 0.1}s`;
+              wrap.appendChild(img);
+            });
+        }
+      }
+    }
+
     function finalizeSearchStatus(el, queries) {
-      const spinner = el.querySelector('.search-spinner-sm');
-      const label   = el.querySelector('.search-label');
-      if (spinner) spinner.remove();
+      const spark = el.querySelector('.search-spark');
+      if (spark) spark.remove();
+      const wrap = el.querySelector('.search-rt-sources');
+      if (wrap) wrap.remove();
+      
+      const label = el.querySelector('.search-label');
       if (queries.length && label) {
         const q = queries[0];
         label.textContent = q.length > 54 ? q.slice(0, 54) + '…' : q;
-        label.style.fontStyle = 'normal';
-        label.style.color = 'var(--g3)';
       } else if (label) {
-        label.remove();
+        el.remove();
       }
       el.classList.add('search-status-done');
     }
 
     // ── Sources pill ───────────────────────────────────
     function makeSourcesPill(sources) {
-      const pill = document.createElement('div');
-      pill.className = 'sources-pill';
+      const wrapper = document.createElement('div');
+      wrapper.className = 'sources-wrapper';
 
-      // ── Header ──
-      const header = document.createElement('div');
-      header.className = 'sources-header';
+      // ── Button ──
+      const btn = document.createElement('button');
+      btn.className = 'sources-pill-btn';
 
       // Stacked favicons (max 4)
       const stack = document.createElement('div');
       stack.className = 'sources-fav-stack';
-      sources.slice(0, 4).forEach((s, i) => {
+      sources.slice(0, 3).forEach((s, i) => {
         const domain = srcDomain(s);
         const wrap = document.createElement('span');
         wrap.className = 'fav-wrap';
-        wrap.style.cssText = `z-index:${10 - i};animation-delay:${i * 0.06}s`;
+        wrap.style.cssText = `z-index:${10 - i}; animation-delay:${i * 0.05}s`;
         const img = document.createElement('img');
         img.className = 'fav-img';
         img.src = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
@@ -352,24 +459,18 @@
         wrap.appendChild(img);
         stack.appendChild(wrap);
       });
-      header.appendChild(stack);
+      btn.appendChild(stack);
 
       const label = document.createElement('span');
       label.className = 'sources-label';
       label.textContent = sources.length === 1 ? '1 source' : `${sources.length} sources`;
-      header.appendChild(label);
+      btn.appendChild(label);
 
-      const chevron = makeSVG('M6 9l6 6 6-6');
-      chevron.className = 'sources-chevron';
-      header.appendChild(chevron);
-
-      pill.appendChild(header);
-
-      // ── Body ──
-      const body = document.createElement('div');
-      body.className = 'sources-body';
+      // ── Dropdown (Inline Body) ──
+      const dropdown = document.createElement('div');
+      dropdown.className = 'sources-body';
       const list = document.createElement('div');
-      list.className = 'sources-list';
+      list.className = 'sources-list-scroll';
 
       sources.forEach(s => {
         const domain = srcDomain(s);
@@ -383,7 +484,6 @@
         fav.className = 'source-fav';
         const img = document.createElement('img');
         img.src = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
-        img.alt = domain;
         img.onerror = () => { img.style.display = 'none'; fav.textContent = (domain[0] || '?').toUpperCase(); };
         fav.appendChild(img);
         item.appendChild(fav);
@@ -400,18 +500,28 @@
         info.appendChild(d);
         item.appendChild(info);
 
-        const arr = makeSVG('M5 12h14 M12 5l7 7-7 7');
-        arr.className = 'source-arrow';
-        item.appendChild(arr);
-
         list.appendChild(item);
       });
 
-      body.appendChild(list);
-      pill.appendChild(body);
+      dropdown.appendChild(list);
+      wrapper.appendChild(btn);
+      wrapper.appendChild(dropdown);
 
-      header.addEventListener('click', () => pill.classList.toggle('open'));
-      return pill;
+      // Toggle mechanism
+      let isOpen = false;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        isOpen = !isOpen;
+        if (isOpen) {
+          wrapper.classList.add('open');
+          setTimeout(sink, 50); // gently scroll down as accordion opens
+        } else {
+          wrapper.classList.remove('open');
+        }
+      });
+      dropdown.addEventListener('click', e => e.stopPropagation()); // Keep open when clicking inside
+
+      return wrapper;
     }
 
     function srcDomain(s) {
