@@ -1214,6 +1214,20 @@ def _run_build(send, recv_q, prd_text: str, app_name: str, uid: str | None = Non
     """
     # ── Step 1: Plan ───────────────────────────────────────────────────────
     send("step_start", step="plan", label="Planning", progress=5)
+
+    # Recovery: if prd_text is empty, try to fetch from Firestore
+    if not prd_text and fs and uid and bid:
+        send("log", text="PRD empty in request — attempting recovery from Firestore…")
+        try:
+            biz_doc = fs.collection("users").document(uid).collection("businesses").document(bid).get()
+            if biz_doc.exists:
+                data = biz_doc.to_dict() or {}
+                prd_text = data.get("prd", "")
+                if not app_name:
+                    app_name = data.get("name", "My App")
+        except Exception as e:
+            send("log", text=f"Firestore recovery failed: {e}", level="warn")
+
     if prd_text:
         send("log", text=f"PRD loaded ({len(prd_text)} chars).")
     else:
@@ -2060,7 +2074,7 @@ async def marketing_reels_websocket(websocket: WebSocket):
         await websocket.close()
         return
 
-    target_url = data.get("target_url", "https://calcgpt.ai")
+    target_url = data.get("target_url", "")
     token = data.get("token", "")
     bid = data.get("bid", "")
 

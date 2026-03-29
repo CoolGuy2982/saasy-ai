@@ -216,7 +216,7 @@
     const browserScreenshot = document.getElementById("browser-screenshot");
 
     const params = new URLSearchParams(window.location.search);
-    const targetUrl = params.get("target_url") || "https://calcgpt.ai";
+    let targetUrl = params.get("target_url") || "";
     const bid = params.get("bid") || "";
 
     // ── Firestore status check ─────────────────────────────
@@ -225,6 +225,10 @@
 
     async function checkFirestoreJob() {
       if (!bid || !auth.currentUser) {
+        if (!targetUrl) {
+          addLog("No target URL or business ID provided.", "error");
+          return;
+        }
         startBuild();
         return;
       }
@@ -234,6 +238,9 @@
         const bizSnap = await getDoc(bizRef);
         if (bizSnap.exists()) {
           const data = bizSnap.data();
+          // Prioritize the actual deployed URL from Firestore
+          if (data.deployedUrl) targetUrl = data.deployedUrl;
+
           if (data.pipelineStatus === "reels_complete" && data.marketingReelUrls) {
              statusDot.className = "build-status-dot build-status-dot--done";
              statusText.textContent = "Complete";

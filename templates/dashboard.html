@@ -5,11 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Saasy — Dashboard</title>
   <link rel="stylesheet" href="/static/css/main.css" />
+  <link rel="stylesheet" href="/static/css/unified-stepper.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
 </head>
 <body class="dashboard-page">
+  {% include 'stepper_fragment.html' %}
 
   <!-- Sidebar -->
   <aside class="sidebar">
@@ -26,31 +28,18 @@
     </div>
 
     <nav class="sidebar-nav">
-      <a href="#" class="nav-item active">
+      <a href="#" class="nav-item active" id="tab-businesses" data-tab="businesses">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
           <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
         </svg>
         <span>Businesses</span>
       </a>
-      <a href="#" class="nav-item">
+      <a href="#" class="nav-item" id="tab-launches" data-tab="launches">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
         </svg>
         <span>Launches</span>
-      </a>
-      <a href="#" class="nav-item">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="M3 3h18v18H3z" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>
-        </svg>
-        <span>Analytics</span>
-      </a>
-      <a href="#" class="nav-item">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-          <polyline points="22,6 12,13 2,6"/>
-        </svg>
-        <span>Outreach</span>
       </a>
     </nav>
 
@@ -77,8 +66,8 @@
     <!-- Top bar -->
     <header class="topbar">
       <div>
-        <h2 class="page-title">My Businesses</h2>
-        <p class="page-sub">All your automated ventures, in one place.</p>
+        <h2 class="page-title" id="page-title">My Businesses</h2>
+        <p class="page-sub" id="page-sub">All your automated ventures, in one place.</p>
       </div>
       <button class="btn-new" id="new-business-btn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
@@ -88,10 +77,8 @@
       </button>
     </header>
 
-    <!-- Empty state / Business grid -->
+    <!-- Businesses view -->
     <div class="businesses-grid" id="businesses-grid">
-
-      <!-- Empty state shown when no businesses -->
       <div class="empty-state" id="empty-state">
         <div class="empty-icon">
           <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
@@ -110,7 +97,21 @@
           Create your first business
         </button>
       </div>
+    </div>
 
+    <!-- Launches view -->
+    <div class="launches-grid" id="launches-grid" style="display:none">
+      <div class="empty-state" id="launches-empty-state">
+        <div class="empty-icon">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+            <path d="M20 4L4 14l16 8 16-8L20 4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M4 27l16 8 16-8" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" opacity="0.4"/>
+            <path d="M4 20.5l16 8 16-8" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" opacity="0.4"/>
+          </svg>
+        </div>
+        <h3 class="empty-title">No launches yet</h3>
+        <p class="empty-body">Once you build and deploy a business, it will appear here with a live preview.</p>
+      </div>
     </div>
 
   </div>
@@ -129,20 +130,17 @@
           </div>
           <div>
             <h3 class="bsetup-title">Connect your accounts</h3>
-            <p class="bsetup-sub">Sign in to Google, GitHub &amp; Bolt.new — saved once for all future builds</p>
+            <p class="bsetup-sub" id="bsetup-sub">Sign in to GitHub — saved once for all future builds</p>
           </div>
         </div>
       </div>
 
       <div class="bsetup-steps">
-        <div class="bsetup-step bsetup-step--active" id="bsetup-s1">
-          <span class="bsetup-step-num">1</span><span>Google</span>
+        <div class="bsetup-step bsetup-step--active" id="bsetup-s1" data-step="1">
+          <span class="bsetup-step-num">1</span><span>GitHub</span>
         </div>
-        <div class="bsetup-step" id="bsetup-s2">
-          <span class="bsetup-step-num">2</span><span>GitHub</span>
-        </div>
-        <div class="bsetup-step" id="bsetup-s3">
-          <span class="bsetup-step-num">3</span><span>Bolt.new</span>
+        <div class="bsetup-step" id="bsetup-s2" data-step="2">
+          <span class="bsetup-step-num">2</span><span>Bolt.new</span>
         </div>
       </div>
 
@@ -152,11 +150,6 @@
           <span class="bsetup-dot" style="background:#febc2e"></span>
           <span class="bsetup-dot" style="background:#28c840"></span>
           <span class="bsetup-url" id="bsetup-url">Starting browser…</span>
-          <div class="bsetup-navbtns">
-            <button class="bsetup-navbtn" id="bsetup-nav-google">Google</button>
-            <button class="bsetup-navbtn" id="bsetup-nav-github">GitHub</button>
-            <button class="bsetup-navbtn" id="bsetup-nav-bolt">Bolt.new</button>
-          </div>
         </div>
         <div class="bsetup-browser-body" id="bsetup-body">
           <div class="bsetup-loading" id="bsetup-loading">
@@ -168,7 +161,8 @@
       </div>
 
       <div class="bsetup-footer">
-        <p class="bsetup-hint">Sign in to the accounts you want to use for this business. If you want the same accounts as before, just click Save. <span id="bsetup-openlink" style="display:none">— <a id="bsetup-direct-link" href="#" target="_blank" style="color:var(--accent)">Open browser in new tab</a> if popups are blocked.</span></p>
+        <p class="bsetup-hint" id="bsetup-hint">Sign in to GitHub in the browser above, then click Next.</p>
+        <button class="bsetup-done-btn" id="bsetup-next" style="display:none">Next: Bolt.new →</button>
         <button class="bsetup-done-btn" id="bsetup-done" style="display:none">Save &amp; continue →</button>
       </div>
 
@@ -292,10 +286,9 @@
       await loadBusinesses(user.uid);
     });
 
-    async function loadBusinesses(uid) {
-      const grid      = document.getElementById("businesses-grid");
-      const emptyState = document.getElementById("empty-state");
+    let allDocs = [];  // cache of all business docs
 
+    async function loadBusinesses(uid) {
       try {
         let snap;
         try {
@@ -303,28 +296,45 @@
         } catch {
           snap = await getDocs(collection(db, "users", uid, "businesses"));
         }
+        allDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      } catch (err) {
+        console.error("Failed to load businesses:", err);
+      }
+      renderView("businesses");
+    }
 
-        if (snap.empty) {
-          emptyState.style.display = "";
-          return;
-        }
+    function renderView(tab) {
+      const bizGrid      = document.getElementById("businesses-grid");
+      const launchGrid   = document.getElementById("launches-grid");
+      const emptyState   = document.getElementById("empty-state");
+      const launchEmpty  = document.getElementById("launches-empty-state");
 
+      if (tab === "businesses") {
+        bizGrid.style.display    = "";
+        launchGrid.style.display = "none";
+        document.getElementById("page-title").textContent = "My Businesses";
+        document.getElementById("page-sub").textContent   = "All your automated ventures, in one place.";
+
+        // Clear old cards (keep empty-state)
+        Array.from(bizGrid.children).forEach(c => { if (!c.id) c.remove(); });
+
+        if (allDocs.length === 0) { emptyState.style.display = ""; return; }
         emptyState.style.display = "none";
 
-        snap.forEach(doc => {
-          const d  = doc.data();
-          const id = doc.id;
-          const name   = d.name   || "Untitled";
-          const status = d.status || "idea";
-          const prd    = d.prd    || "";
-          const excerpt = prd.replace(/[#*`]/g, "").trim().slice(0, 100);
-
+        allDocs.forEach(d => {
+          const { id, name = "Untitled", status = "idea", prd = "" } = d;
+          const excerpt    = prd.replace(/[#*`]/g, "").trim().slice(0, 100);
           const statusLabel = { idea: "Idea", building: "Building", live: "Live" }[status] || status;
           const statusClass = { idea: "status-idea", building: "status-building", live: "status-live" }[status] || "status-idea";
 
           const card = document.createElement("div");
           card.className = "business-card";
           card.innerHTML = `
+            <button class="biz-delete-btn" data-id="${id}" data-name="${esc(name)}" data-action="delete" title="Delete business" aria-label="Delete ${esc(name)}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              </svg>
+            </button>
             <div class="business-card-header">
               <div class="business-name">${esc(name)}</div>
               <span class="business-status ${statusClass}">${statusLabel}</span>
@@ -333,23 +343,92 @@
             <div class="business-card-footer">
               <button class="biz-btn biz-btn--secondary" data-id="${id}" data-name="${esc(name)}" data-action="chat">Continue chat</button>
               <button class="biz-btn biz-btn--primary"   data-id="${id}" data-name="${esc(name)}" data-action="build">Build →</button>
+            </div>`;
+          bizGrid.appendChild(card);
+        });
+
+      } else {
+        bizGrid.style.display    = "none";
+        launchGrid.style.display = "";
+        document.getElementById("page-title").textContent = "Launches";
+        document.getElementById("page-sub").textContent   = "Your live apps, one click away.";
+
+        // Clear old cards (keep empty-state)
+        Array.from(launchGrid.children).forEach(c => { if (!c.id) c.remove(); });
+
+        const live = allDocs.filter(d => d.status === "live" && d.deployedUrl);
+        if (live.length === 0) { launchEmpty.style.display = ""; return; }
+        launchEmpty.style.display = "none";
+
+        live.forEach(d => {
+          const { id, name = "Untitled", deployedUrl } = d;
+          const domain = deployedUrl.replace(/^https?:\/\//, "").split("/")[0];
+          const thumbUrl = `https://image.thum.io/get/width/600/crop/380/${deployedUrl}`;
+
+          const card = document.createElement("div");
+          card.className = "launch-card";
+          card.innerHTML = `
+            <div class="launch-preview">
+              <img src="${thumbUrl}" alt="${esc(name)} preview"
+                   onerror="this.closest('.launch-preview').classList.add('launch-preview--failed')" />
+              <a class="launch-preview-overlay" href="${esc(deployedUrl)}" target="_blank" rel="noopener">
+                Visit site →
+              </a>
             </div>
-          `;
-          grid.appendChild(card);
+            <div class="launch-card-body">
+              <div class="launch-card-header">
+                <div class="business-name">${esc(name)}</div>
+                <span class="business-status status-live">Live</span>
+              </div>
+              <a class="launch-url" href="${esc(deployedUrl)}" target="_blank" rel="noopener">${esc(domain)}</a>
+              <div class="business-card-footer">
+                <button class="biz-btn biz-btn--secondary" data-id="${id}" data-name="${esc(name)}" data-action="chat">Chat</button>
+                <button class="biz-btn biz-btn--primary"   data-id="${id}" data-name="${esc(name)}" data-action="build">Rebuild →</button>
+              </div>
+            </div>`;
+          launchGrid.appendChild(card);
         });
+      }
+    }
 
-        // Wire card buttons
-        grid.addEventListener("click", e => {
-          const btn = e.target.closest("[data-action]");
-          if (!btn) return;
-          const { id, name, action } = btn.dataset;
-          if (action === "chat")  window.location.href = `/new?bid=${id}`;
-          if (action === "build") window.location.href = `/build?name=${encodeURIComponent(name)}&bid=${id}`;
-        });
+    // Tab switching
+    document.querySelectorAll(".nav-item[data-tab]").forEach(el => {
+      el.addEventListener("click", e => {
+        e.preventDefault();
+        document.querySelectorAll(".nav-item[data-tab]").forEach(t => t.classList.remove("active"));
+        el.classList.add("active");
+        renderView(el.dataset.tab);
+      });
+    });
 
-      } catch (err) {
-        console.error("Failed to load businesses:", err);
-        emptyState.style.display = "";
+    // Delegate card button clicks (both grids)
+    document.getElementById("businesses-grid").addEventListener("click", handleCardClick);
+    document.getElementById("launches-grid").addEventListener("click", handleCardClick);
+
+    async function handleCardClick(e) {
+      const btn = e.target.closest("[data-action]");
+      if (!btn) return;
+      const { id, name, action } = btn.dataset;
+      if (action === "chat")  window.location.href = `/new?bid=${id}`;
+      if (action === "build") window.location.href = `/build?name=${encodeURIComponent(name)}&bid=${id}`;
+      if (action === "delete") {
+        if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+        const token = await getToken();
+        try {
+          const r = await fetch(`/api/business/${id}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${token}` }
+          });
+          if (!r.ok) throw new Error((await r.json()).error || "Failed");
+          allDocs = allDocs.filter(d => d.id !== id);
+          btn.closest(".business-card, .launch-card").remove();
+          const remaining = document.querySelectorAll(".business-card, .launch-card");
+          if (remaining.length === 0) {
+            document.getElementById("empty-state").style.display = "";
+          }
+        } catch (err) {
+          alert(`Could not delete business: ${err.message}`);
+        }
       }
     }
 
@@ -423,23 +502,81 @@
       pendingRedirect = dest;
       const token = await getToken();
       closeModal();
+
+      // Check if the user already has a saved browser profile
+      try {
+        const r = await fetch("/api/browser-profile", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const data = await r.json();
+        if (data.hasProfile) {
+          // Profile already saved — skip setup and go straight to the destination
+          window.location.href = dest;
+          return;
+        }
+      } catch {}
+
       openBrowserSetup(token);
     }
 
+    const STEPS = [
+      { id: "bsetup-s1", url: "https://github.com/login",  label: "github.com/login",  hint: "Sign in to GitHub in the browser above, then click Next." },
+      { id: "bsetup-s2", url: "https://bolt.new",          label: "bolt.new",           hint: "Sign in to Bolt.new, then click Save & continue." },
+    ];
+    let currentStep = 0;
+    let baseIframeSrc = "";
+
+    async function goToStep(stepIndex) {
+      currentStep = stepIndex;
+      const step = STEPS[stepIndex];
+
+      // Update step indicators
+      STEPS.forEach((s, i) => {
+        const el = document.getElementById(s.id);
+        if (i < stepIndex)       el.className = "bsetup-step bsetup-step--done";
+        else if (i === stepIndex) el.className = "bsetup-step bsetup-step--active";
+        else                      el.className = "bsetup-step";
+      });
+
+      // Update hint text and subtitle
+      document.getElementById("bsetup-hint").textContent = step.hint;
+      document.getElementById("bsetup-sub").textContent =
+        stepIndex === 0 ? "Sign in to GitHub — saved once for all future builds"
+                        : "Now sign in to Bolt.new to complete setup";
+
+      // Navigate the browser
+      if (activeSessionId) {
+        const token = await getToken();
+        await fetch("/api/browser-setup/navigate", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: activeSessionId, url: step.url })
+        });
+        document.getElementById("bsetup-url").textContent = step.label;
+      }
+
+      // Show/hide Next vs Save buttons
+      document.getElementById("bsetup-next").style.display = stepIndex < STEPS.length - 1 ? "inline-flex" : "none";
+      document.getElementById("bsetup-done").style.display = stepIndex === STEPS.length - 1 ? "inline-flex" : "none";
+    }
+
     async function openBrowserSetup(token) {
-      const modal    = document.getElementById("bsetup-modal");
-      const loading  = document.getElementById("bsetup-loading");
-      const iframe   = document.getElementById("bsetup-iframe");
-      const doneBtn  = document.getElementById("bsetup-done");
-      const urlEl    = document.getElementById("bsetup-url");
+      const modal   = document.getElementById("bsetup-modal");
+      const loading = document.getElementById("bsetup-loading");
+      const iframe  = document.getElementById("bsetup-iframe");
+      const urlEl   = document.getElementById("bsetup-url");
 
       // Reset UI
+      currentStep = 0;
       loading.style.display = "flex";
       iframe.style.display  = "none";
-      doneBtn.style.display = "none";
-      document.getElementById("bsetup-s1").className = "bsetup-step bsetup-step--active";
-      document.getElementById("bsetup-s2").className = "bsetup-step";
-      document.getElementById("bsetup-s3").className = "bsetup-step";
+      document.getElementById("bsetup-next").style.display = "none";
+      document.getElementById("bsetup-done").style.display = "none";
+      STEPS.forEach((s, i) => {
+        document.getElementById(s.id).className = i === 0 ? "bsetup-step bsetup-step--active" : "bsetup-step";
+      });
+      document.getElementById("bsetup-hint").textContent = STEPS[0].hint;
+      document.getElementById("bsetup-sub").textContent  = "Sign in to GitHub — saved once for all future builds";
       urlEl.textContent = "Starting browser…";
       modal.style.display = "flex";
 
@@ -454,20 +591,22 @@
         activeSessionId = data.sessionId;
         activeProfileId = data.profileId;
 
-        // Embed the live interactive browser — Steel's debugUrl + ?interactive=true
-        // gives 25fps WebRTC streaming with full keyboard/mouse, no Steel login needed
-        const iframeSrc = data.debugUrl + "?interactive=true&startUrl=" + encodeURIComponent("https://accounts.google.com");
-        iframe.src = iframeSrc;
-        loading.style.display = "none";
+        // Embed the live browser (starts on about:blank — we navigate immediately after)
+        iframe.src = data.debugUrl + "?interactive=true";
         iframe.style.display  = "block";
-        doneBtn.style.display = "inline-flex";
-        urlEl.textContent = "accounts.google.com";
-        // Show direct-link fallback for popup-heavy OAuth flows (bolt.new, GitHub)
-        const linkEl = document.getElementById("bsetup-direct-link");
-        if (linkEl) {
-          linkEl.href = iframeSrc;
-          document.getElementById("bsetup-openlink").style.display = "inline";
-        }
+        loading.style.display = "none";
+
+        // Give the iframe a moment to connect, then navigate to GitHub login
+        await new Promise(r => setTimeout(r, 1800));
+        await fetch("/api/browser-setup/navigate", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: activeSessionId, url: STEPS[0].url })
+        });
+        urlEl.textContent = STEPS[0].label;
+
+        // Show Next button for step 1
+        document.getElementById("bsetup-next").style.display = "inline-flex";
 
       } catch (e) {
         loading.innerHTML = `<p style="color:#b91c1c">Failed to start browser: ${e.message}</p>`;
@@ -475,33 +614,17 @@
       }
     }
 
-    // Quick-nav buttons — tell the embedded browser to go to a specific site
-    // We can't postMessage cross-origin into the iframe, so instead we navigate
-    // via a separate Steel computer API call through our backend.
-    async function navTo(url, stepEl) {
-      if (!activeSessionId) return;
-      const token = await getToken();
-      await fetch("/api/browser-setup/navigate", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: activeSessionId, url })
+    // Steps are clickable to jump back/forward
+    STEPS.forEach((s, i) => {
+      document.getElementById(s.id).addEventListener("click", () => {
+        if (activeSessionId) goToStep(i);
       });
-      document.getElementById("bsetup-url").textContent = url.replace("https://", "");
-      // Advance step indicator visually
-      ["bsetup-s1","bsetup-s2","bsetup-s3"].forEach(id => {
-        const el = document.getElementById(id);
-        if (el === stepEl) el.className = "bsetup-step bsetup-step--active";
-        else if (document.getElementById("bsetup-steps")?.children && el.compareDocumentPosition(stepEl) & Node.DOCUMENT_POSITION_FOLLOWING)
-          el.className = "bsetup-step bsetup-step--done";
-      });
-    }
+    });
 
-    document.getElementById("bsetup-nav-google").addEventListener("click", () =>
-      navTo("https://accounts.google.com", document.getElementById("bsetup-s1")));
-    document.getElementById("bsetup-nav-github").addEventListener("click", () =>
-      navTo("https://github.com/login", document.getElementById("bsetup-s2")));
-    document.getElementById("bsetup-nav-bolt").addEventListener("click", () =>
-      navTo("https://bolt.new", document.getElementById("bsetup-s3")));
+    // Next button — advances to next step
+    document.getElementById("bsetup-next").addEventListener("click", () => {
+      if (currentStep < STEPS.length - 1) goToStep(currentStep + 1);
+    });
 
     // Save & continue — release session, persist profile, redirect
     document.getElementById("bsetup-done").addEventListener("click", async () => {

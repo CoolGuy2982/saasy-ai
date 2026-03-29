@@ -1,0 +1,156 @@
+:root {
+  --step-active-border: rgba(0, 0, 0, 0.85);
+  --step-active-text: #000;
+  --step-past-bg: #30D158;
+  --step-past-text: #fff;
+  --step-future-border: rgba(0, 0, 0, 0.1);
+  --step-future-text: #ababab;
+  --step-arrow-color: rgba(0, 0, 0, 0.18);
+  --apple-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+}
+
+.unified-stepper-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2000;
+  padding: 18px 24px;
+  padding-top: calc(18px + env(safe-area-inset-top));
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.unified-stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+/* ── Base pill ───────────────────────────── */
+.stepper-step {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: 100px;
+  font-family: var(--apple-font);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.15px;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: default;
+  transition:
+    background 0.28s cubic-bezier(0.25, 1, 0.5, 1),
+    border-color 0.28s cubic-bezier(0.25, 1, 0.5, 1),
+    color 0.28s cubic-bezier(0.25, 1, 0.5, 1),
+    box-shadow 0.28s cubic-bezier(0.25, 1, 0.5, 1),
+    transform 0.22s cubic-bezier(0.25, 1, 0.5, 1);
+
+  /* Frosted backdrop for legibility on any background */
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1.5px solid transparent;
+}
+
+/* ── Active (current step) — bold outline ── */
+.stepper-step.active {
+  border-color: rgba(0, 0, 0, 0.78);
+  color: #1d1d1f;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.10),
+    0 1px 1px rgba(0, 0, 0, 0.06);
+}
+
+/* ── Past (completed) — Apple green fill ── */
+.stepper-step.past {
+  border-color: transparent;
+  background: linear-gradient(180deg, #38D962 0%, #28C349 100%);
+  color: #fff;
+  cursor: pointer;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.14),
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.stepper-step.past:hover {
+  background: linear-gradient(180deg, #3EDF68 0%, #2DC84E 100%);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.12),
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.stepper-step.past:active {
+  background: linear-gradient(180deg, #2FC456 0%, #26BA46 100%);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* ── Future (locked) — faded outline ── */
+.stepper-step.future {
+  border-color: var(--step-future-border);
+  color: var(--step-future-text);
+  background: rgba(255, 255, 255, 0.5);
+  cursor: default;
+}
+
+/* ── Step icon (number / checkmark) ── */
+.step-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: all 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.stepper-step.active .step-icon {
+  background: rgba(0, 0, 0, 0.07);
+  color: #000;
+}
+
+.stepper-step.future .step-icon {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--step-future-text);
+}
+
+/* Past icon — checkmark floats directly on green, no circle noise */
+.stepper-step.past .step-icon {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* ── Arrow ── */
+.step-arrow {
+  color: var(--step-arrow-color);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 1px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 600px) {
+  .stepper-text {
+    display: none;
+  }
+  .stepper-step {
+    padding: 8px 10px;
+  }
+  .unified-stepper {
+    gap: 4px;
+  }
+}

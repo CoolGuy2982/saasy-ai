@@ -5,11 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Saasy — Marketing & Outreach</title>
   <link rel="stylesheet" href="/static/css/main.css" />
+  <link rel="stylesheet" href="/static/css/unified-stepper.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
 </head>
 <body class="dashboard-page overflow-hidden">
+  {% include 'stepper_fragment.html' %}
 
   <!-- Sidebar (Reused from Dashboard) -->
   <aside class="sidebar">
@@ -69,7 +71,7 @@
     <div class="marketing-grid animate-in" style="--delay: 0.1s; padding: 0 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 900px;">
       
       <!-- Reels Feature -->
-      <a href="/marketing/reels" class="marketing-card bounce-hover glassmorphism">
+      <a href="/marketing/reels" class="marketing-card bounce-hover glassmorphism" id="card-reels">
         <div class="card-icon gradient-lavender">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
@@ -89,7 +91,7 @@
       </a>
 
       <!-- Cold Email Feature -->
-      <a href="/marketing/email" class="marketing-card bounce-hover glassmorphism">
+      <a href="/marketing/email" class="marketing-card bounce-hover glassmorphism" id="card-email">
         <div class="card-icon gradient-blue">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
@@ -105,5 +107,21 @@
     </div>
   </div>
 
+  <script>
+    const _p = new URLSearchParams(window.location.search);
+    const _bid = _p.get("bid") || "";
+    const _appUrl = _p.get("app_url") || "";
+
+    function _buildHref(base) {
+      const qs = new URLSearchParams();
+      if (_bid) qs.set("bid", _bid);
+      if (_appUrl) qs.set("target_url", _appUrl);
+      const q = qs.toString();
+      return q ? `${base}?${q}` : base;
+    }
+
+    document.getElementById("card-reels").href = _buildHref("/marketing/reels");
+    document.getElementById("card-email").href = _buildHref("/marketing/email");
+  </script>
 </body>
 </html>

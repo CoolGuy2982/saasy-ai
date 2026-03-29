@@ -9,5 +9,3 @@ steel-sdk
 playwright
 Pillow
 exa-py
-google-auth-oauthlib
-google-api-python-client

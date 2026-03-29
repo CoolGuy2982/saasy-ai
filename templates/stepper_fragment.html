@@ -1,0 +1,106 @@
+{% if step > 0 %}
+{% set bid = request.query_params.get('bid') or request.query_params.get('id') or '' %}
+{% set qs = ('?bid=' + bid) if bid else '' %}
+
+{# ── Icon helpers ── #}
+{% macro check_icon() %}
+<div class="step-icon">
+  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="20 6 9 17 4 12"/>
+  </svg>
+</div>
+{% endmacro %}
+
+{% macro num_icon(n) %}
+<div class="step-icon">{{ n }}</div>
+{% endmacro %}
+
+{# ── Arrow ── #}
+{% macro arrow() %}
+<div class="step-arrow">
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="5" y1="12" x2="19" y2="12"/>
+    <polyline points="13 6 19 12 13 18"/>
+  </svg>
+</div>
+{% endmacro %}
+
+<div class="unified-stepper-container">
+  <div class="unified-stepper">
+
+    {# ── Step 1: Idea ── #}
+    {% if step > 1 %}
+    <a href="/new{{ qs }}" class="stepper-step past">
+      {{ check_icon() }}
+      <span class="stepper-text">Idea</span>
+    </a>
+    {% else %}
+    <div class="stepper-step {% if step == 1 %}active{% else %}future{% endif %}">
+      {{ num_icon(1) }}
+      <span class="stepper-text">Idea</span>
+    </div>
+    {% endif %}
+
+    {{ arrow() }}
+
+    {# ── Step 2: Build ── #}
+    {% if step > 2 %}
+    <a href="/build{{ qs }}" class="stepper-step past">
+      {{ check_icon() }}
+      <span class="stepper-text">Build</span>
+    </a>
+    {% elif step == 2 %}
+    <a href="/build{{ qs }}" class="stepper-step active">
+      {{ num_icon(2) }}
+      <span class="stepper-text">Build</span>
+    </a>
+    {% else %}
+    <div class="stepper-step future">
+      {{ num_icon(2) }}
+      <span class="stepper-text">Build</span>
+    </div>
+    {% endif %}
+
+    {{ arrow() }}
+
+    {# ── Step 3: Market ── #}
+    {% if step > 3 %}
+    <a href="/marketing{{ qs }}" class="stepper-step past">
+      {{ check_icon() }}
+      <span class="stepper-text">Market</span>
+    </a>
+    {% elif step == 3 %}
+    <a href="/marketing{{ qs }}" class="stepper-step active">
+      {{ num_icon(3) }}
+      <span class="stepper-text">Market</span>
+    </a>
+    {% else %}
+    <div class="stepper-step future">
+      {{ num_icon(3) }}
+      <span class="stepper-text">Market</span>
+    </div>
+    {% endif %}
+
+    {{ arrow() }}
+
+    {# ── Step 4: Outreach ── #}
+    {% if step > 4 %}
+    <a href="/marketing/email{{ qs }}" class="stepper-step past">
+      {{ check_icon() }}
+      <span class="stepper-text">Outreach</span>
+    </a>
+    {% elif step == 4 %}
+    <a href="/marketing/email{{ qs }}" class="stepper-step active">
+      {{ num_icon(4) }}
+      <span class="stepper-text">Outreach</span>
+    </a>
+    {% else %}
+    <div class="stepper-step future">
+      {{ num_icon(4) }}
+      <span class="stepper-text">Outreach</span>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endif %}

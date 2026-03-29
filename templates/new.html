@@ -5,29 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Saasy — New Business</title>
   <link rel="stylesheet" href="/static/css/new.css?v=2" />
+  <link rel="stylesheet" href="/static/css/unified-stepper.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
 </head>
 <body>
-
+  {% include 'stepper_fragment.html' %}
   <div class="layout" id="layout">
+
+    <!-- ── Full-width top bar ── -->
+    <div class="chat-header">
+      <a href="/dashboard" class="back-link-inline">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+        Dashboard
+      </a>
+      <button class="new-convo-btn" onclick="window.location.href='/new'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+        New Idea
+      </button>
+    </div>
 
     <!-- ── Chat ── -->
     <div class="chat" id="chat">
-      <div class="chat-header">
-        <a href="/dashboard" class="back-link-inline">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="15 18 9 12 15 6"/>
-          </svg>
-          Dashboard
-        </a>
-        <button class="new-convo-btn" onclick="window.location.href='/new'">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
-          New Idea
-        </button>
-      </div>
 
       <div class="chat-spacer"></div>
 
@@ -118,11 +121,11 @@
     const auth = getAuth();
     // Use stable business ID from URL or generate a new one
     const urlParams = new URLSearchParams(window.location.search);
-    let businessId = urlParams.get('id');
+    let businessId = urlParams.get('id') || urlParams.get('bid');
     if (!businessId) {
       businessId = 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-      window.history.replaceState(null, '', '?id=' + businessId);
     }
+    window.history.replaceState(null, '', '?id=' + businessId);
 
     onAuthStateChanged(auth, async u => {
       if (!u) {
@@ -172,16 +175,39 @@
     closeBtn.addEventListener('click', () => { layout.classList.remove('split'); });
 
     // ── Load History ───────────────────────────────────
+    function showHistorySkeleton() {
+      hero.style.display = 'none';
+      chat.classList.add('has-messages');
+      const skeletons = [
+        { type: 'user' }, { type: 'ai' },
+        { type: 'user' }, { type: 'ai' },
+      ];
+      skeletons.forEach(({ type }) => {
+        const row = document.createElement('div');
+        row.className = `skeleton-row skeleton-row-${type}`;
+        row.dataset.skeleton = '1';
+        const bubble = document.createElement('div');
+        bubble.className = `skeleton-bubble skeleton-bubble-${type}`;
+        row.appendChild(bubble);
+        msgs.appendChild(row);
+      });
+    }
+
+    function clearHistorySkeleton() {
+      msgs.querySelectorAll('[data-skeleton]').forEach(el => el.remove());
+    }
+
     async function loadHistory() {
+      showHistorySkeleton();
       try {
         const res = await fetch(`/api/history?bid=${businessId}`, {
           headers: await authHeaders()
         });
         const data = await res.json();
+        clearHistorySkeleton();
+
         if (data.messages && data.messages.length > 0) {
           heroGone = true;
-          hero.style.display = 'none';
-          chat.classList.add('has-messages');
 
           for (const m of data.messages) {
             history.push({ role: m.role, content: m.content });
@@ -204,9 +230,16 @@
           }
           sink();
           refreshCanvas();
+        } else {
+          // No history — restore hero
+          chat.classList.remove('has-messages');
+          hero.style.display = '';
         }
       } catch (e) {
         console.error("Failed to load history", e);
+        clearHistorySkeleton();
+        chat.classList.remove('has-messages');
+        hero.style.display = '';
       }
     }
 
@@ -235,9 +268,10 @@
       row.appendChild(searchStatus);
       sink();
 
-      let bubbleEl = null;
-      let fullText = '';
-      let gotText  = false;
+      let bubbleEl      = null;
+      let fullText      = '';
+      let gotText       = false;
+      let realtimeSrcs  = [];   // accumulate sources from search_query events
 
       try {
         const res = await fetch('/api/chat', {
@@ -264,7 +298,6 @@
             if (ev.type === 'text') {
               if (!gotText) {
                 gotText = true;
-                searchStatus.classList.add('search-status-fading');
                 bubbleEl = document.createElement('div');
                 bubbleEl.className = 'bubble bubble-ai';
                 row.appendChild(bubbleEl);
@@ -275,7 +308,11 @@
             }
 
             else if (ev.type === 'search_query') {
-              updateSearchStatusRealtime(searchStatus, ev.queries || [], ev.sources || []);
+              const incoming = ev.sources || [];
+              incoming.forEach(s => {
+                if (!realtimeSrcs.find(x => x.url === s.url)) realtimeSrcs.push(s);
+              });
+              updateSearchStatusRealtime(searchStatus, ev.queries || [], incoming);
             }
 
             else if (ev.type === 'done') {
@@ -284,13 +321,16 @@
 
               if (bubbleEl) bubbleEl.innerHTML = marked.parse(fullText);
 
-              // Search status → show query only
-              finalizeSearchStatus(searchStatus, ev.search_queries || []);
+              // Remove the search status — the bottom pill replaces it
+              searchStatus.remove();
 
-              // Sources pill below the bubble
-              const sources = ev.sources || [];
+              // Sources from done event OR accumulated from real-time events
+              const sources = (ev.sources && ev.sources.length) ? ev.sources : realtimeSrcs;
+              const searchQueries = ev.search_queries || [];
               if (sources.length) {
                 row.appendChild(makeSourcesPill(sources));
+              } else if (searchQueries.length) {
+                row.appendChild(makeWebSearchPill(searchQueries));
               }
 
               sink();
@@ -344,7 +384,7 @@
         const name = m ? m[1] : 'Product Vision';
         canvasName.textContent = name;
         sessionStorage.setItem('saasy_prd', markdown);
-        buildBtn.href = `/build?name=${encodeURIComponent(name)}`;
+        buildBtn.href = `/build?name=${encodeURIComponent(name)}&bid=${businessId}`;
         buildBtn.style.display = 'inline-flex';
 
         canvasDoc.innerHTML = marked.parse(markdown);
@@ -432,6 +472,21 @@
         el.remove();
       }
       el.classList.add('search-status-done');
+    }
+
+    // ── Web-search query pill (no specific URL sources) ────
+    function makeWebSearchPill(queries) {
+      const pill = document.createElement('div');
+      pill.className = 'web-search-pill';
+      const q = queries[0] || 'web search';
+      const label = q.length > 52 ? q.slice(0, 52) + '…' : q;
+      pill.innerHTML = `
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        ${esc(label)}${queries.length > 1 ? ` <span style="color:var(--g4);font-weight:400">+${queries.length - 1}</span>` : ''}
+      `;
+      return pill;
     }
 
     // ── Sources pill ───────────────────────────────────

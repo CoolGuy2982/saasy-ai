@@ -5,11 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Saasy — Build a SaaS on autopilot</title>
   <link rel="stylesheet" href="/static/css/main.css" />
+  <link rel="stylesheet" href="/static/css/unified-stepper.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 </head>
 <body class="auth-page">
+  {% include 'stepper_fragment.html' %}
 
   <div class="bg-grid"></div>
 
@@ -69,7 +71,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
-    import { getAuth, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBsPAga9Hd_71js7lKGlvASrY8b-toWa8M",
@@ -83,6 +85,12 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const provider = new GoogleAuthProvider();
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        window.location.href = "/dashboard";
+      }
+    });
 
     async function signIn() {
       const btn = document.getElementById("google-sign-in");

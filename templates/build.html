@@ -5,11 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Saasy — Building</title>
   <link rel="stylesheet" href="/static/css/main.css" />
+  <link rel="stylesheet" href="/static/css/unified-stepper.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
 </head>
 <body class="build-page">
+  {% include 'stepper_fragment.html' %}
 
   <!-- Header -->
   <header class="build-header">
@@ -86,96 +88,104 @@
 
     <!-- Right: Design Gallery or Browser view -->
     <div class="build-right">
-
-      <!-- View tabs — shown when both gallery and browser are available -->
-      <div class="build-view-tabs" id="build-view-tabs" style="display:none;">
-        <button class="bvt-btn bvt-btn--active" id="tab-designs">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-          Designs
-        </button>
-        <button class="bvt-btn" id="tab-browser">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-          Browser
-        </button>
-      </div>
-
-      <!-- Design Gallery — shown during Stitch phase -->
-      <div class="design-gallery" id="design-gallery" style="display:none;">
-        <div class="design-gallery-header">
-          <div class="design-gallery-title">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-            <span>UI Designs</span>
-          </div>
-          <span class="design-gallery-subtitle" id="design-gallery-subtitle">Generating screens with Google Stitch…</span>
-        </div>
-        <div class="design-gallery-grid" id="design-gallery-grid">
-          <!-- Cards injected by JS -->
-        </div>
-      </div>
-
-      <!-- Browser pane — shown during browser phases -->
-      <div id="browser-pane" style="display:none; width:100%;">
-        <!-- Browser chrome -->
-        <div class="browser-chrome">
-          <div class="browser-bar">
+      
+      <!-- Browser chrome: now serves as a persistent shell for both views -->
+      <div class="browser-chrome">
+        <!-- Browser bar: persistent header containing dots, URL and view switcher -->
+        <div class="browser-bar">
+          <div class="browser-bar-left">
             <div class="browser-dots">
               <span class="dot-red"></span>
               <span class="dot-yellow"></span>
               <span class="dot-green"></span>
             </div>
-            <div class="browser-url-wrap">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              <span class="browser-url" id="browser-url">about:blank</span>
-            </div>
-            <div class="browser-bar-actions">
-              <div class="browser-spinner" id="browser-spinner"></div>
-            </div>
+          </div>
+          
+          <div class="browser-url-wrap">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span class="browser-url" id="browser-url">about:blank</span>
           </div>
 
-        <div class="browser-viewport" id="browser-viewport">
-          <div class="browser-placeholder" id="browser-placeholder">
-            <div class="browser-placeholder-icon">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-                <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-              </svg>
-            </div>
-            <p>Browser initializing…</p>
-            <p class="browser-placeholder-sub">The AI agent will open a browser session here.</p>
+          <!-- View switcher: now inside the browser bar to the right of the URL -->
+          <div class="build-view-tabs" id="build-view-tabs" style="display:none;">
+            <button class="bvt-btn bvt-btn--active" id="tab-designs">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+              Designs
+            </button>
+            <button class="bvt-btn" id="tab-browser">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              Browser
+            </button>
           </div>
-          <img class="browser-screenshot" id="browser-screenshot" src="" alt="Browser view" />
 
-          <div class="interactive-chat-overlay" id="chat-overlay" style="display: none;">
-            <form id="chat-form">
-              <input type="text" id="chat-input" placeholder="Message the AI agent to take control…" autocomplete="off">
-              <button type="submit" id="chat-submit" title="Send message">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          <div class="browser-bar-actions">
+            <div class="browser-spinner" id="browser-spinner"></div>
+          </div>
+        </div>
+
+        <div class="browser-viewport" style="display: flex; flex-direction: column;">
+          <!-- Design Gallery — shown during Stitch phase -->
+          <div class="design-gallery" id="design-gallery" style="display:none; flex: 1; overflow-y: auto;">
+            <div class="design-gallery-header">
+              <div class="design-gallery-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                <span>UI Designs</span>
+              </div>
+              <span class="design-gallery-subtitle" id="design-gallery-subtitle">Generating screens with Google Stitch…</span>
+              <button class="design-skip-btn" id="design-skip-btn" title="Skip designs and go straight to building">
+                Skip to Bolt
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
-            </form>
+            </div>
+            <div class="design-gallery-grid" id="design-gallery-grid">
+              <!-- Cards injected by JS -->
+            </div>
           </div>
 
-          <!-- Intervention overlay: shown when build needs human sign-in -->
-          <div class="intervention-overlay" id="intervention-overlay" style="display: none;">
-            <div class="intervention-header">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              <span id="intervention-reason">Sign-in required — take control of the browser</span>
+          <!-- Browser content view -->
+          <div id="browser-view-content" style="display:none; flex: 1; flex-direction: column; min-height: 0;">
+            <div class="browser-placeholder" id="browser-placeholder">
+              <div class="browser-placeholder-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+                  <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                </svg>
+              </div>
+              <p>Browser initializing…</p>
+              <p class="browser-placeholder-sub">The AI agent will open a browser session here.</p>
             </div>
-            <iframe id="intervention-iframe"
-              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation"
-              allow="clipboard-read; clipboard-write"
-              src="about:blank"></iframe>
-            <div class="intervention-footer">
-              <span class="intervention-hint">Sign in, then click Continue when ready.</span>
-              <button class="intervention-continue-btn" id="intervention-continue">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-                Continue build
-              </button>
+            <img class="browser-screenshot" id="browser-screenshot" src="" alt="Browser view" />
+
+            <div class="interactive-chat-overlay" id="chat-overlay" style="display: none;">
+              <form id="chat-form">
+                <input type="text" id="chat-input" placeholder="Message the AI agent to take control…" autocomplete="off">
+                <button type="submit" id="chat-submit" title="Send message">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+              </form>
+            </div>
+
+            <!-- Intervention overlay: shown when build needs human sign-in -->
+            <div class="intervention-overlay" id="intervention-overlay" style="display: none;">
+              <div class="intervention-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span id="intervention-reason">Sign-in required — take control of the browser</span>
+              </div>
+              <iframe id="intervention-iframe"
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation"
+                allow="clipboard-read; clipboard-write"
+                src="about:blank"></iframe>
+              <div class="intervention-footer">
+                <span class="intervention-hint">Sign in, then click Continue when ready.</span>
+                <button class="intervention-continue-btn" id="intervention-continue">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                  Continue build
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
-
-      </div><!-- /browser-pane -->
 
     </div>
 
@@ -220,6 +230,7 @@
     const designGallery = document.getElementById("design-gallery");
     const designGalleryGrid = document.getElementById("design-gallery-grid");
     const designGallerySubtitle = document.getElementById("design-gallery-subtitle");
+    const designSkipBtn = document.getElementById("design-skip-btn");
     const browserPane = document.getElementById("browser-pane");
     const buildViewTabs = document.getElementById("build-view-tabs");
     const tabDesigns = document.getElementById("tab-designs");
@@ -232,6 +243,7 @@
     // Read app name from query params
     const params = new URLSearchParams(window.location.search);
     const appName = params.get("name");
+    const bizId   = params.get("bid") || "";
     if (appName) buildTitle.textContent = `Building ${appName}`;
 
     // Render steps
@@ -328,23 +340,65 @@
     // ── WebSocket stream from /api/ws/build ────────────────
     let ws = null;
 
-    async function startBuild() {
+    async function connectBuild() {
+      let token = "";
+      try { token = await auth.currentUser?.getIdToken() || ""; } catch {}
+
+      // Check whether a build is already running or completed for this bid
+      let existingStatus = "idle";
+      let existingUrl    = "";
+      if (bizId) {
+        try {
+          const r = await fetch(`/api/build/status?bid=${encodeURIComponent(bizId)}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const d = await r.json();
+          existingStatus = d.status || "idle";
+          existingUrl    = d.deployedUrl || "";
+        } catch (_) {}
+      }
+
+      // If the full pipeline already completed, skip straight to marketing
+      if (existingStatus === "complete") {
+        statusDot.className = "build-status-dot build-status-dot--done";
+        statusText.textContent = "Complete";
+        setProgress(100);
+        STEPS.forEach(s => setStep(s.id, "done"));
+        addLog("Pipeline already complete — heading to Marketing…", "success");
+        setTimeout(() => {
+          const qs = new URLSearchParams();
+          if (bizId)       qs.set("bid", bizId);
+          if (existingUrl) qs.set("app_url", existingUrl);
+          window.location.href = `/marketing/reels?${qs.toString()}`;
+        }, 2000);
+        return;
+      }
+
+      // For a fresh start, we need a PRD (either from storage or from Firestore via server recovery)
       const prdText = sessionStorage.getItem("saasy_prd") || "";
-      if (!prdText && !appName) {
-        addLog("No PRD found. Returning to dashboard.", "error");
+      if (existingStatus === "idle" && !prdText && !appName && !bizId) {
+        addLog("No PRD or business context found. Returning to dashboard.", "error");
         setTimeout(() => window.location.href = "/dashboard", 2000);
         return;
       }
 
-      addLog("Connecting to build agent via WebSocket…");
+      if (existingStatus === "running" || existingStatus === "building") {
+        addLog("Reconnecting to build in progress…");
+      } else {
+        addLog("Connecting to build agent via WebSocket…");
+      }
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       ws = new WebSocket(`${protocol}//${window.location.host}/api/ws/build`);
 
-      ws.onopen = async () => {
-        let token = "";
-        try { token = await auth.currentUser?.getIdToken() || ""; } catch {}
-        ws.send(JSON.stringify({ prd_text: prdText, app_name: appName, token }));
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          prd_text:     prdText,
+          app_name:     appName,
+          token,
+          bid:          bizId,
+          event_offset: 0,  // server replays all events since job start
+        }));
       };
 
       ws.onmessage = (event) => {
@@ -353,17 +407,17 @@
         handleEvent(ev);
       };
 
-      ws.onerror = (err) => {
-        addLog(`WebSocket error.`, "error");
+      ws.onerror = () => {
+        addLog("WebSocket error.", "error");
         statusDot.className = "build-status-dot build-status-dot--error";
         statusText.textContent = "Error";
       };
 
       ws.onclose = () => {
         if (statusText.textContent !== "Complete") {
-          addLog("WebSocket disconnected.", "error");
-          statusDot.className = "build-status-dot build-status-dot--error";
-          statusText.textContent = "Disconnected";
+          addLog("Disconnected — build continues in background.", "warn");
+          statusDot.className = "build-status-dot build-status-dot--paused";
+          statusText.textContent = "Background";
         }
       };
     }
@@ -373,22 +427,43 @@
     }
 
     function switchView(view) {
+      const designGallery = document.getElementById("design-gallery");
+      const browserViewContent = document.getElementById("browser-view-content");
+      const tabDesigns = document.getElementById("tab-designs");
+      const tabBrowser = document.getElementById("tab-browser");
+
       if (view === "designs") {
         designGallery.style.display = "flex";
-        browserPane.style.display = "none";
+        browserViewContent.style.display = "none";
         tabDesigns.classList.add("bvt-btn--active");
         tabBrowser.classList.remove("bvt-btn--active");
       } else {
         designGallery.style.display = "none";
-        browserPane.style.display = "block";
+        browserViewContent.style.display = "flex";
         tabDesigns.classList.remove("bvt-btn--active");
         tabBrowser.classList.add("bvt-btn--active");
       }
     }
 
     function showBrowser() {
-      if (hasDesigns) buildViewTabs.style.display = "flex";
+      const buildViewTabs = document.getElementById("build-view-tabs");
+      buildViewTabs.style.display = "flex";
       switchView("browser");
+    }
+
+    // ── Notifications ─────────────────────────────────────
+    function notify(title, options) {
+      if (!("Notification" in window)) return;
+      if (Notification.permission === "granted") {
+        new Notification(title, options);
+      } else if (Notification.permission !== "denied") {
+        Notification.requestPermission().then(p => {
+          if (p === "granted") new Notification(title, options);
+        });
+      }
+    }
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
     }
 
     // ── Design preview modal ──────────────────────────────
@@ -403,12 +478,20 @@
         iframe.src = `data:image/png;base64,${s.data}`;
       }
       modal.style.display = "flex";
+
+      // Hide stepper
+      const stepper = document.querySelector(".unified-stepper-container");
+      if (stepper) stepper.style.display = "none";
     }
 
     function closeDesignModal() {
       document.getElementById("design-modal").style.display = "none";
       const iframe = document.getElementById("design-modal-iframe");
       iframe.srcdoc = ""; iframe.src = "";
+
+      // Show stepper
+      const stepper = document.querySelector(".unified-stepper-container");
+      if (stepper) stepper.style.display = "flex";
     }
 
     // Apply scale to iframe preview card (call after DOM insertion)
@@ -425,18 +508,30 @@
     }
 
     function handleEvent(ev) {
+      const designGallery = document.getElementById("design-gallery");
+      const designGallerySubtitle = document.getElementById("design-gallery-subtitle");
+      const designSkipBtn = document.getElementById("design-skip-btn");
+      const designGalleryGrid = document.getElementById("design-gallery-grid");
+      const browserViewContent = document.getElementById("browser-view-content");
+      const browserPlaceholder = document.getElementById("browser-placeholder");
+      const browserScreenshot = document.getElementById("browser-screenshot");
+      const browserUrl = document.getElementById("browser-url");
+      const browserSpinner = document.getElementById("browser-spinner");
+      const statusDot = document.querySelector(".build-status-dot");
+      const statusText = document.getElementById("build-status-text");
+
       switch (ev.type) {
         case "step_start":
           setStep(ev.step, "active");
           setProgress(ev.progress || 0);
           addLog(`Started: ${ev.label}`);
           if (ev.step === "github") {
-            // Stitch design phase — show gallery, hide browser
-            designGallery.style.display = "flex";
-            browserPane.style.display = "none";
+            // Stitch design phase — show gallery, hide browser content
+            switchView("designs");
             designGallerySubtitle.textContent = "Generating screens with Google Stitch…";
           } else if (["build", "test", "deploy"].includes(ev.step)) {
             // Browser phases — switch to browser view
+            designSkipBtn.style.display = "none";
             showBrowser();
           }
           break;
@@ -446,6 +541,7 @@
           addLog(`Completed: ${ev.label}`, "success");
           if (ev.step === "github") {
             designGallerySubtitle.textContent = "Designs complete";
+            designSkipBtn.style.display = "none";
           }
           break;
         case "step_error":
@@ -458,6 +554,9 @@
           addLog(ev.text, ev.level || "info");
           break;
         case "design_generating": {
+          if (ev.index !== undefined && ev.total !== undefined) {
+            designGallerySubtitle.textContent = `Generating screen ${ev.index + 1} of ${ev.total}…`;
+          }
           const cardId = `design-card-${slugify(ev.name)}`;
           if (!document.getElementById(cardId)) {
             const skeleton = document.createElement("div");
@@ -470,6 +569,7 @@
         }
         case "design_screen": {
           hasDesigns = true;
+          buildViewTabs.style.display = "flex";
           designScreens[ev.name] = { html: ev.html || "", data: ev.data || "" };
 
           const cardId = `design-card-${slugify(ev.name)}`;
@@ -554,6 +654,7 @@
           statusDot.className = "build-status-dot build-status-dot--paused";
           statusText.textContent = "Waiting for you";
           addLog(`⚠ Intervention needed: ${ev.reason || "sign-in required"}`, "warn");
+          notify("Build needs your help", { body: ev.reason || "Sign-in required to continue.", icon: "/static/favicon.ico" });
           break;
         }
         case "intervention_resumed":
@@ -564,17 +665,27 @@
           addLog("Resumed build.", "success");
           break;
         case "done":
-        case "ws_done":
+        case "ws_done": {
           statusDot.className = "build-status-dot build-status-dot--done";
           statusText.textContent = "Complete";
           browserSpinner.style.display = "none";
           setProgress(100);
           addLog("Build complete! Your app is live.", "success");
-          if (ev.url || ev.type === "ws_done") {
-            addLog(`Deployed at: ${ev.url || browserUrl.textContent}`, "success");
+          notify("Build Complete!", { body: "Your app is live and ready.", icon: "/static/favicon.ico" });
+          const deployedUrl = ev.url || browserUrl.textContent || "";
+          if (deployedUrl) {
+            addLog(`Deployed at: ${deployedUrl}`, "success");
           }
           if (ws) { ws.close(); }
+          addLog("Heading to Marketing…", "success");
+          setTimeout(() => {
+            const qs = new URLSearchParams();
+            if (bizId) qs.set("bid", bizId);
+            if (deployedUrl) qs.set("app_url", deployedUrl);
+            window.location.href = `/marketing/reels?${qs.toString()}`;
+          }, 2500);
           break;
+        }
       }
     }
 
@@ -633,6 +744,14 @@
       return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     }
 
+    // Skip to Bolt button
+    designSkipBtn.addEventListener("click", () => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({ type: "skip_stitch" }));
+      designSkipBtn.style.display = "none";
+      designGallerySubtitle.textContent = "Skipped — going to Bolt…";
+    });
+
     // Tab clicks
     tabDesigns.addEventListener("click", () => switchView("designs"));
     tabBrowser.addEventListener("click",  () => switchView("browser"));
@@ -642,14 +761,9 @@
     document.getElementById("design-modal-overlay").addEventListener("click", closeDesignModal);
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDesignModal(); });
 
-    // Re-apply iframe scales on resize
-    window.addEventListener("resize", () => {
-      document.querySelectorAll(".design-card").forEach(applyPreviewScale);
-    });
-
     onAuthStateChanged(auth, (u) => {
       if (!u) { window.location.href = "/"; return; }
-      startBuild();
+      connectBuild();
     });
   </script>
 
