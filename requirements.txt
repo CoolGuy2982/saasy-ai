@@ -9,3 +9,4 @@ steel-sdk
 playwright
 Pillow
 exa-py
+gunicorn
