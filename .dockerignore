@@ -11,3 +11,6 @@ venv/
 .gitignore
 *.md
 .claude
+deploy.sh
+node_modules/
+package-lock.json

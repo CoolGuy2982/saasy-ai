@@ -1,0 +1,46 @@
+steps:
+  # Build the container image
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - build
+      - -t
+      - "$_AR_HOSTNAME/$PROJECT_ID/cloud-run-source-deploy/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA"
+      - .
+
+  # Push to Artifact Registry
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - push
+      - "$_AR_HOSTNAME/$PROJECT_ID/cloud-run-source-deploy/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA"
+
+  # Deploy to Cloud Run
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - "$_SERVICE_NAME"
+      - --image=$_AR_HOSTNAME/$PROJECT_ID/cloud-run-source-deploy/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+      - --region=$_DEPLOY_REGION
+      - --platform=managed
+      - --allow-unauthenticated
+      - --min-instances=1
+      - --max-instances=1
+      - --cpu=2
+      - --memory=2Gi
+      - --timeout=3600
+      - --concurrency=80
+      - --cpu-always-allocated
+      - --port=8080
+      - --update-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest,STEEL_API_KEY=STEEL_API_KEY:latest,FIREBASE_TYPE=FIREBASE_TYPE:latest,FIREBASE_PROJECT_ID=FIREBASE_PROJECT_ID:latest,FIREBASE_PRIVATE_KEY_ID=FIREBASE_PRIVATE_KEY_ID:latest,FIREBASE_PRIVATE_KEY=FIREBASE_PRIVATE_KEY:latest,FIREBASE_CLIENT_EMAIL=FIREBASE_CLIENT_EMAIL:latest,FIREBASE_CLIENT_ID=FIREBASE_CLIENT_ID:latest,FIREBASE_AUTH_URI=FIREBASE_AUTH_URI:latest,FIREBASE_TOKEN_URI=FIREBASE_TOKEN_URI:latest,FIREBASE_AUTH_PROVIDER_X509_CERT_URL=FIREBASE_AUTH_PROVIDER_X509_CERT_URL:latest,FIREBASE_CLIENT_X509_CERT_URL=FIREBASE_CLIENT_X509_CERT_URL:latest
+
+images:
+  - "$_AR_HOSTNAME/$PROJECT_ID/cloud-run-source-deploy/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA"
+
+substitutions:
+  _SERVICE_NAME: saasy
+  _DEPLOY_REGION: us-central1
+  _AR_HOSTNAME: us-central1-docker.pkg.dev
+
+options:
+  logging: CLOUD_LOGGING_ONLY
