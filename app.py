@@ -9,7 +9,15 @@ import threading
 import base64
 import time
 import queue
+import sys
 from dotenv import load_dotenv
+
+# ── Background build job registry ─────────────────────────────────────────────
+# Survives page navigations and WebSocket disconnects.
+# bid → {"events": [], "done": bool, "uid": str, "recv_q": Queue, "lock": Lock, "thread": Thread}
+_active_builds: dict = {}
+# jid → {"events": [], "done": bool, "lock": Lock}
+_active_email_jobs: dict = {}
 from google.genai.errors import ClientError
 
 load_dotenv()
@@ -100,6 +108,18 @@ def _fs_browser_setup_done(uid: str) -> bool:
     """Return True only if the user has explicitly completed the browser sign-in setup."""
     return bool(_fs_get_user_doc(uid).get("browserSigninSetup"))
 
+def _fs_save_deployed(uid: str, bid: str, url: str):
+    """Mark a business as live and persist its deployed URL."""
+    if not fs or not uid or not bid or not url:
+        return
+    try:
+        (fs.collection("users").document(uid)
+           .collection("businesses").document(bid)
+           .set({"status": "live", "deployedUrl": url, "deployedAt": fb_fs.SERVER_TIMESTAMP},
+                merge=True))
+    except Exception as e:
+        print(f"Failed saving deployed URL: {e}")
+
 def _fs_save_steel_profile(uid: str, profile_id: str):
     """Persist the user's Steel.dev profile ID to Firestore (called by builds)."""
     if not fs or not uid or not profile_id:
@@ -111,6 +131,56 @@ def _fs_save_steel_profile(uid: str, profile_id: str):
         )
     except Exception as e:
         print(f"Failed saving Steel profile: {e}")
+
+def _fs_save_pipeline_status(uid: str, bid: str, status: str, extra: dict | None = None):
+    """Save pipeline status to Firestore.
+    status: 'building' | 'reels' | 'emailing' | 'complete' | 'error'
+    """
+    if not fs or not uid or not bid:
+        return
+    payload = {"pipelineStatus": status, "pipelineUpdatedAt": fb_fs.SERVER_TIMESTAMP}
+    if extra:
+        payload.update(extra)
+    try:
+        (fs.collection("users").document(uid)
+           .collection("businesses").document(bid)
+           .set(payload, merge=True))
+    except Exception as e:
+        print(f"Failed saving pipeline status: {e}")
+
+def _fs_log_event(uid: str, bid: str, event: dict):
+    """Append a build event to the business's events subcollection."""
+    if not fs or not uid or not bid:
+        return
+    try:
+        ref = (fs.collection("users").document(uid)
+                 .collection("businesses").document(bid)
+                 .collection("build_events"))
+        # Use server timestamp for ordering, but store the event itself
+        ref.add({**event, "timestamp": fb_fs.SERVER_TIMESTAMP})
+    except Exception as e:
+        print(f"Failed logging event to Firestore: {e}")
+
+def _fs_get_events(uid: str, bid: str) -> list:
+    """Retrieve all build events for a business, ordered by timestamp."""
+    if not fs or not uid or not bid:
+        return []
+    try:
+        docs = (fs.collection("users").document(uid)
+                  .collection("businesses").document(bid)
+                  .collection("build_events")
+                  .order_by("timestamp")
+                  .stream())
+        events = []
+        for d in docs:
+            data = d.to_dict()
+            data.pop("timestamp", None)
+            events.append(data)
+        return events
+    except Exception as e:
+        print(f"Failed fetching events from Firestore: {e}")
+        return []
+
 
 def _fs_mark_browser_setup_done(uid: str, profile_id: str | None):
     """Mark that the user has explicitly completed browser sign-in setup."""
@@ -175,37 +245,37 @@ Rules: Every sentence must be specific. No vague filler. No sections you don't h
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request, "step": 0})
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+    return templates.TemplateResponse("dashboard.html", {"request": request, "step": 0})
 
 
 @app.get("/new", response_class=HTMLResponse)
 async def new_business(request: Request):
-    return templates.TemplateResponse("new.html", {"request": request})
+    return templates.TemplateResponse("new.html", {"request": request, "step": 1})
 
 
 @app.get("/build", response_class=HTMLResponse)
 async def build_page(request: Request):
-    return templates.TemplateResponse("build.html", {"request": request})
+    return templates.TemplateResponse("build.html", {"request": request, "step": 2})
 
 
 @app.get("/marketing", response_class=HTMLResponse)
 async def marketing_page(request: Request):
-    return templates.TemplateResponse("marketing.html", {"request": request})
+    return templates.TemplateResponse("marketing.html", {"request": request, "step": 3})
 
 
 @app.get("/marketing/reels", response_class=HTMLResponse)
 async def marketing_reels_page(request: Request):
-    return templates.TemplateResponse("marketing_reels.html", {"request": request})
+    return templates.TemplateResponse("marketing_reels.html", {"request": request, "step": 3})
 
 
 @app.get("/marketing/email", response_class=HTMLResponse)
 async def marketing_email_page(request: Request):
-    return templates.TemplateResponse("marketing_email.html", {"request": request})
+    return templates.TemplateResponse("marketing_email.html", {"request": request, "step": 4})
 
 
 @app.post("/api/session")
@@ -217,6 +287,26 @@ async def set_session(request: Request, response: Response):
 @app.delete("/api/session")
 async def clear_session(response: Response):
     return JSONResponse({"status": "ok"})
+
+
+@app.delete("/api/business/{bid}")
+async def delete_business(request: Request, bid: str):
+    uid = _get_uid(request)
+    if not uid:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    if not fs or not bid:
+        return JSONResponse({"error": "Bad request"}, status_code=400)
+    try:
+        biz_ref = (fs.collection("users").document(uid)
+                     .collection("businesses").document(bid))
+        # Delete subcollections (messages)
+        msgs = biz_ref.collection("messages").stream()
+        for m in msgs:
+            m.reference.delete()
+        biz_ref.delete()
+        return JSONResponse({"status": "ok"})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.get("/api/history")
@@ -282,45 +372,61 @@ async def chat_endpoint(request: Request):
                 search_queries = []
                 seen_urls = set()
 
+                def _extract_grounding(gm, seen_urls, sources, search_queries):
+                    """Extract sources and queries from a grounding metadata object."""
+                    s_list = []
+                    q_list = [q for q in (gm.web_search_queries or []) if q]
+                    chunks = getattr(gm, "grounding_chunks", None) or []
+                    for gc in chunks:
+                        web = getattr(gc, "web", None)
+                        if web:
+                            uri = getattr(web, "uri", "") or ""
+                            title = getattr(web, "title", "") or uri
+                            if uri and uri not in seen_urls:
+                                seen_urls.add(uri)
+                                s_list.append({"url": uri, "title": title})
+                                sources.append({"url": uri, "title": title})
+                    for q in q_list:
+                        if q not in search_queries:
+                            search_queries.append(q)
+                    return q_list, s_list
+
                 stream_fn = getattr(genai_client.models, "generate_content_stream", None)
                 if stream_fn:
+                    last_chunk = None
                     for chunk in stream_fn(
                         model="gemini-3-flash-preview",
                         contents=contents,
                         config=config,
                     ):
+                        last_chunk = chunk
                         text = getattr(chunk, "text", None) or ""
                         try:
-                            if chunk.candidates and chunk.candidates[0].grounding_metadata:
-                                gm = chunk.candidates[0].grounding_metadata
-                                if gm:
-                                    q_list = [q for q in (gm.web_search_queries or []) if q]
-                                    s_list = []
-                                    if hasattr(gm, 'grounding_chunks') and gm.grounding_chunks:
-                                        for gc in gm.grounding_chunks:
-                                            web = getattr(gc, "web", None)
-                                            if web:
-                                                uri = getattr(web, "uri", "") or ""
-                                                title = getattr(web, "title", "") or uri
-                                                if uri:
-                                                    if uri not in seen_urls:
-                                                        seen_urls.add(uri)
-                                                        s_list.append({"url": uri, "title": title})
-                                                        sources.append({"url": uri, "title": title})
-                                    
-                                    for q in q_list:
-                                        if q not in search_queries:
-                                            search_queries.append(q)
-
-                                    if q_list or s_list:
-                                        # send the fully accumulated lists for the client
-                                        loop.call_soon_threadsafe(queue.put_nowait, {"type": "search_query", "queries": search_queries, "sources": sources})
+                            cands = getattr(chunk, "candidates", None) or []
+                            if cands and getattr(cands[0], "grounding_metadata", None):
+                                gm = cands[0].grounding_metadata
+                                q_list, s_list = _extract_grounding(gm, seen_urls, sources, search_queries)
+                                if q_list or s_list:
+                                    loop.call_soon_threadsafe(queue.put_nowait, {
+                                        "type": "search_query",
+                                        "queries": list(search_queries),
+                                        "sources": list(sources),
+                                    })
                         except Exception:
                             pass
 
                         if text:
                             full_text += text
                             loop.call_soon_threadsafe(queue.put_nowait, {"type": "text", "text": text})
+
+                    # Final pass: extract grounding from the last chunk (often only populated here)
+                    if last_chunk and not sources:
+                        try:
+                            cands = getattr(last_chunk, "candidates", None) or []
+                            if cands and getattr(cands[0], "grounding_metadata", None):
+                                _extract_grounding(cands[0].grounding_metadata, seen_urls, sources, search_queries)
+                        except Exception:
+                            pass
                 else:
                     response = genai_client.models.generate_content(
                         model="gemini-3-flash-preview",
@@ -330,20 +436,9 @@ async def chat_endpoint(request: Request):
                     full_text = getattr(response, "text", None) or ""
                     loop.call_soon_threadsafe(queue.put_nowait, {"type": "text", "text": full_text})
                     try:
-                        if response.candidates and response.candidates[0].grounding_metadata:
-                            gm = response.candidates[0].grounding_metadata
-                            for q in (gm.web_search_queries or []):
-                                if q and q not in search_queries:
-                                    search_queries.append(q)
-                            if hasattr(gm, 'grounding_chunks') and gm.grounding_chunks:
-                                for gc in gm.grounding_chunks:
-                                    web = getattr(gc, "web", None)
-                                    if web:
-                                        uri = getattr(web, "uri", "") or ""
-                                        title = getattr(web, "title", "") or uri
-                                        if uri and uri not in seen_urls:
-                                            seen_urls.add(uri)
-                                            sources.append({"url": uri, "title": title})
+                        cands = getattr(response, "candidates", None) or []
+                        if cands and getattr(cands[0], "grounding_metadata", None):
+                            _extract_grounding(cands[0].grounding_metadata, seen_urls, sources, search_queries)
                     except Exception:
                         pass
 
@@ -538,29 +633,35 @@ async def browser_setup_finish(request: Request):
         return JSONResponse({"error": "steel-sdk not installed"}, status_code=500)
 
     steel = Steel(steel_api_key=STEEL_API_KEY)
-    profile_id = None
+    # The frontend sends the profileId it received from /browser-setup/start
+    # (Steel assigns it at session creation with persist_profile=True).
+    profile_id = body.get("profileId") or None
     try:
         steel.sessions.release(session_id)
-        # profile_id is only assigned AFTER release — poll until it appears (up to 15s)
-        for _ in range(15):
-            try:
-                sess = steel.sessions.retrieve(session_id)
-                profile_id = getattr(sess, "profile_id", None)
-                if profile_id:
-                    break
-            except Exception:
-                pass
-            time.sleep(1)
-        # Final fallback: if retrieve never returned a profile_id, try listing profiles
+        print(f"[browser-setup/finish] released session {session_id}, client profileId={profile_id}")
+        # If the client didn't send a profileId, poll until Steel populates it (up to 30s)
         if not profile_id:
-            try:
-                profiles = steel.profiles.list()
-                for p in (profiles.profiles if hasattr(profiles, "profiles") else profiles):
-                    if getattr(p, "source_session_id", None) == session_id:
-                        profile_id = getattr(p, "id", None)
+            for _pi in range(30):
+                try:
+                    sess = steel.sessions.retrieve(session_id)
+                    profile_id = getattr(sess, "profile_id", None)
+                    print(f"[browser-setup/finish] poll {_pi+1}: profile_id={profile_id}")
+                    if profile_id:
                         break
-            except Exception:
-                pass
+                except Exception as e:
+                    print(f"[browser-setup/finish] poll error: {e}")
+                time.sleep(1)
+            # Final fallback: list profiles and match by source session
+            if not profile_id:
+                try:
+                    profiles = steel.profiles.list()
+                    for p in (profiles.profiles if hasattr(profiles, "profiles") else profiles):
+                        if getattr(p, "source_session_id", None) == session_id:
+                            profile_id = getattr(p, "id", None)
+                            break
+                except Exception:
+                    pass
+        print(f"[browser-setup/finish] final profile_id={profile_id}")
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -588,16 +689,15 @@ async def browser_setup_navigate(request: Request):
 
     steel = Steel(steel_api_key=STEEL_API_KEY)
     try:
-        steel.sessions.computer(session_id, action="navigate", url=url)
-    except Exception:
-        # Fallback: use address bar
-        try:
-            steel.sessions.computer(session_id, action="press_key", keys=["Control", "l"])
-            time.sleep(0.15)
-            steel.sessions.computer(session_id, action="type_text", text=url)
-            steel.sessions.computer(session_id, action="press_key", keys=["Return"])
-        except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
+        steel.sessions.computer(session_id, action="press_key", keys=["Control", "l"])
+        time.sleep(0.3)
+        steel.sessions.computer(session_id, action="press_key", keys=["Control", "a"])
+        time.sleep(0.1)
+        steel.sessions.computer(session_id, action="type_text", text=url)
+        time.sleep(0.5)
+        steel.sessions.computer(session_id, action="press_key", keys=["Return"])
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
     return JSONResponse({"ok": True})
 
@@ -704,7 +804,7 @@ def _stitch_extract_id(result: dict, *keys: str) -> str:
     return ""
 
 
-def _design_with_stitch(genai_client, prd_text: str, app_name: str, send) -> list[dict]:
+def _design_with_stitch(genai_client, prd_text: str, app_name: str, send, recv_q=None) -> list[dict]:
     """
     Call Stitch MCP directly (no Gemini function-calling loop).
     Returns list of {name, html, screenshot} dicts, one per generated screen.
@@ -815,18 +915,57 @@ def _design_with_stitch(genai_client, prd_text: str, app_name: str, send) -> lis
             sname = m2.group(1)
         return shot_url, "", sname
 
+    import queue as _q
+    import threading as _threading
+
+    def _check_skip():
+        """Returns True if a skip_stitch message is in the queue."""
+        if recv_q is None:
+            return False
+        try:
+            msg = recv_q.get_nowait()
+            if msg.get("type") == "skip_stitch":
+                return True
+            recv_q.put(msg)
+        except _q.Empty:
+            pass
+        return False
+
     screens: list[dict] = []
     known_screen_ids: set[str] = set()
+    total_screens = len(screen_specs)
 
-    for screen_name, prompt in screen_specs:
-        send("design_generating", name=screen_name)
-        send("log", text=f"  Stitch: generating '{screen_name}'…")
+    for idx, (screen_name, prompt) in enumerate(screen_specs):
+        # Check for skip before starting
+        if _check_skip():
+            send("log", text="  Stitch: skipped by user.", level="warn")
+            return screens
+
+        send("design_generating", name=screen_name, index=idx, total=total_screens)
+        send("log", text=f"  Stitch: generating '{screen_name}' ({idx+1}/{total_screens})…")
         try:
-            gen = _stitch_call(tool_gen, {
-                "projectId": project_id,
-                "prompt": prompt,
-                "modelId": "GEMINI_3_1_PRO",
-            }, STITCH_API_KEY, timeout=180)
+            # Run the blocking Stitch call in a thread so we can check for skip
+            _gen_result: list = [None]
+            _gen_error:  list = [None]
+            def _do_gen(r=_gen_result, e=_gen_error, p=prompt):
+                try:
+                    r[0] = _stitch_call(tool_gen, {
+                        "projectId": project_id,
+                        "prompt": p,
+                        "modelId": "GEMINI_3_1_PRO",
+                    }, STITCH_API_KEY, timeout=180)
+                except Exception as ex:
+                    e[0] = ex
+            _gen_thread = _threading.Thread(target=_do_gen, daemon=True)
+            _gen_thread.start()
+            while _gen_thread.is_alive():
+                _gen_thread.join(timeout=1.0)
+                if _check_skip():
+                    send("log", text="  Stitch: skipped by user.", level="warn")
+                    return screens
+            if _gen_error[0]:
+                raise _gen_error[0]
+            gen = _gen_result[0]
 
             shot_url, html_url, screen_resource = _extract_from_components(gen)
 
@@ -901,23 +1040,32 @@ def _design_with_stitch(genai_client, prd_text: str, app_name: str, send) -> lis
 #   4. Stream SSE events (step updates, logs, screenshots) back to build.html
 # ---------------------------------------------------------------------------
 
-BOLT_TASK_TEMPLATE = """You are an AI agent operating a remote browser on bolt.new. The product requirements have already been submitted to bolt.new. Bolt is now generating the application.
+BOLT_TASK_TEMPLATE = """You are an AI agent monitoring bolt.new. The PRD has already been submitted and bolt.new should be generating the app now.
 
 Your job:
-1. Watch the screen. Bolt.new will show a file tree and code editor as it builds. Wait for it to finish — this takes 1–3 minutes. Do NOT type anything or click the input box.
-2. If bolt.new asks a clarifying question or shows a prompt asking what to build, it means submission failed — in that case navigate to bolt.new, click the center text input, type the requirements below, and click Build now:
 
---- REQUIREMENTS (only use if bolt.new hasn't started building yet) ---
+STEP 1 — Wait for bolt.new to finish building:
+  - You will see a file tree on the left and streaming code. This takes 1–5 minutes.
+  - Do NOT click, type, or interrupt while code is streaming.
+  - If you see a spinner or progress indicator, keep waiting.
+  - If bolt.new shows an error in the code or terminal, try to fix it by typing in the chat.
+
+STEP 2 — Deploy:
+  - Once building is complete (file tree visible, spinner stopped), find the "Deploy" or "Publish" button (usually top-right or in the toolbar).
+  - Click it and wait for deployment to finish.
+  - When the deployed URL appears (e.g. something like "myapp-abc123.bolt.host"), copy it from the panel.
+  - CRITICAL: Use the navigate action to open that deployed URL in the browser address bar. This confirms the deployment and captures the live URL.
+
+STEP 3 — If bolt.new is NOT building yet (still shows the empty prompt box):
+  - Click the prompt textarea, type the requirements below, and click Build now.
+
+REQUIREMENTS (only use if bolt.new has not started building):
 {prd}
---- END REQUIREMENTS ---
 
-3. Once building is complete (file tree is visible and the spinner stops), look for a "Deploy" button (usually top-right or in the toolbar). Click it.
-4. Wait for deployment to finish, then report the final live URL.
-
-Important rules:
-- Do NOT retype or resubmit the requirements unless bolt.new clearly hasn't started building.
-- If you see a loading spinner or streaming code, just wait — do not interrupt.
-- If you see a preview URL or deployed URL, report it immediately."""
+Rules:
+- Once you see the deployed URL in the publish panel, navigate to it immediately.
+- Never retype requirements if building is already in progress.
+- Your final message MUST include the full deployed URL (e.g. https://something.bolt.host)."""
 
 
 
@@ -1056,7 +1204,7 @@ def _execute_action_steel(steel_client, session_id: str, fname: str, args: dict,
     return img, navigated_url
 
 
-def _run_build(send, recv_q, prd_text: str, app_name: str, uid: str | None = None):
+def _run_build(send, recv_q, prd_text: str, app_name: str, uid: str | None = None, bid: str = ""):
     """
     Runs the entire build pipeline in a background thread.
     Uses Steel.dev Computer API for all browser interactions (no Playwright CDP).
@@ -1080,8 +1228,10 @@ def _run_build(send, recv_q, prd_text: str, app_name: str, uid: str | None = Non
     if STITCH_API_KEY and genai_client:
         send("log", text="Generating UI designs with Google Stitch MCP…")
         try:
-            stitch_screens = _design_with_stitch(genai_client, prd_text, app_name, send)
+            stitch_screens = _design_with_stitch(genai_client, prd_text, app_name, send, recv_q)
             send("log", text=f"Stitch: {len(stitch_screens)} screen(s) designed.")
+            # Small grace period for designs to be received by UI before switching to browser
+            time.sleep(5)
         except Exception as _se:
             send("log", text=f"Stitch skipped: {_se}", level="warn")
     else:
@@ -1092,15 +1242,25 @@ def _run_build(send, recv_q, prd_text: str, app_name: str, uid: str | None = Non
     # Build the bolt.new task — include Stitch HTML as design context
     prd_for_task = prd_text or f"Build a simple SaaS app called '{app_name}' with Google sign-in and a clean dashboard."
     design_section = ""
-    if stitch_screens:
-        combined_html = "\n\n".join(
-            f"<!-- {s['name']} -->\n{s['html']}" for s in stitch_screens
-        )
-        design_section = (
-            "\n\n## UI Design Reference (generated by Google Stitch)\n"
-            "Match these designs closely when building the app:\n\n"
-            + combined_html[:6000]
-        )
+    screens_with_html = [s for s in stitch_screens if s.get("html")]
+    if screens_with_html:
+        # Cap each screen at 8 000 chars, total at 40 000 to stay within Bolt's prompt limit
+        PER_SCREEN_LIMIT = 8_000
+        TOTAL_LIMIT = 40_000
+        screen_blocks = []
+        total = 0
+        for s in screens_with_html:
+            block = f"### {s['name']}\n```html\n{s['html'][:PER_SCREEN_LIMIT]}\n```"
+            if total + len(block) > TOTAL_LIMIT:
+                break
+            screen_blocks.append(block)
+            total += len(block)
+        if screen_blocks:
+            design_section = (
+                "\n\n## UI Design Reference (generated by Google Stitch)\n"
+                "Use the following HTML for each page — match these designs exactly:\n\n"
+                + "\n\n".join(screen_blocks)
+            )
     task = BOLT_TASK_TEMPLATE.format(prd=prd_for_task + design_section)
 
     # ── Step 3: Browser + build ────────────────────────────────────────────
@@ -1131,13 +1291,15 @@ def _run_build(send, recv_q, prd_text: str, app_name: str, uid: str | None = Non
             dimensions={"width": SW, "height": SH},
             block_ads=True,
             api_timeout=900000,       # 15 min — hobby plan max
-            persist_profile=True,     # always save profile on release
+            # No persist_profile here — build sessions load the profile read-only.
+            # persist_profile=True would overwrite the saved logins with whatever
+            # state the browser ends up in (e.g. a sign-in modal = logged out).
         )
         if existing_profile_id:
             session_kwargs["profile_id"] = existing_profile_id
             send("log", text=f"Restoring saved browser profile ({existing_profile_id[:8]}…)")
         else:
-            send("log", text="No saved browser profile — continuing without saved credentials.")
+            send("log", text="No saved browser profile — continue without saved credentials.")
 
         session = steel.sessions.create(**session_kwargs)
         sid = session.id
@@ -1145,53 +1307,64 @@ def _run_build(send, recv_q, prd_text: str, app_name: str, uid: str | None = Non
         send("url", url="https://bolt.new")
         send("browser_loading", loading=True)
 
-        # Navigate to bolt.new via keyboard — no CDP needed
-        steel.sessions.computer(sid, action="press_key", keys=["Control", "l"])
-        time.sleep(0.3)
-        steel.sessions.computer(sid, action="type_text", text="https://bolt.new")
-        time.sleep(0.2)
-        steel.sessions.computer(sid, action="press_key", keys=["Return"])
-        time.sleep(5.0)  # wait for bolt.new to fully load
-
-        # ── Direct PRD submission (no agent needed for this step) ──────────
-        # bolt.new homepage: large textarea centered on screen, Build Now button bottom-right of it
-        send("log", text="Submitting PRD to bolt.new prompt box…")
+        # Navigate to bolt.new with the PRD pre-filled via URL parameter
+        # bolt.new supports ?prompt=... to pre-populate the input box
+        import urllib.parse as _urlparse
         prd_for_bolt = prd_text or f"Build a simple SaaS app called '{app_name}' with Google sign-in and a clean dashboard."
+        bolt_url = "https://bolt.new/?prompt=" + _urlparse.quote(prd_for_bolt, safe="")
+        send("log", text="Navigating to bolt.new with PRD pre-filled…")
+        send("url", url="https://bolt.new")
 
-        # Click the prompt textarea (center of screen)
-        steel.sessions.computer(sid, action="click_mouse", button="left", coordinates=[720, 454])
-        time.sleep(0.6)
-        # Select all & clear any existing text, then type the PRD
+        steel.sessions.computer(sid, action="press_key", keys=["Control", "l"])
+        time.sleep(0.5)
         steel.sessions.computer(sid, action="press_key", keys=["Control", "a"])
-        time.sleep(0.1)
-        steel.sessions.computer(sid, action="type_text", text=prd_for_bolt)
-        time.sleep(0.8)
+        time.sleep(0.2)
+        steel.sessions.computer(sid, action="type_text", text=bolt_url)
+        time.sleep(2.0)  # wait for full URL to be typed before pressing Return
+        steel.sessions.computer(sid, action="press_key", keys=["Return"])
 
-        # Screenshot to show the filled input
+        # Poll until bolt.new has fully rendered (screenshot > 150 KB) or 60s timeout
+        send("log", text="Waiting for bolt.new to load…")
+        img_b64 = ""
+        img_bytes = b""
+        for _attempt in range(20):
+            time.sleep(3.0)
+            img_b64 = _steel_screenshot(steel, sid)
+            img_bytes = base64.b64decode(img_b64) if img_b64 else b""
+            send("log", text=f"  bolt.new: {len(img_bytes):,} bytes…")
+            if img_b64:
+                send("screenshot", data=img_b64)
+            if len(img_bytes) > 150_000:
+                send("log", text="bolt.new loaded.")
+                break
+        else:
+            send("log", text="bolt.new slow to load — continuing anyway.", level="warn")
+
+        # The ?prompt= URL auto-fills the textarea.
+        # Take a screenshot first so we can see what loaded, then click Build now.
+        send("log", text="Submitting PRD…")
+        img_b64 = _steel_screenshot(steel, sid)
+        if img_b64:
+            send("screenshot", data=img_b64)
+        # Click the Build now button — it's always to the right of the input bar
+        # Use Tab to focus the button and Enter to press it (keyboard-safe approach)
+        steel.sessions.computer(sid, action="press_key", keys=["Tab"])
+        time.sleep(0.3)
+        steel.sessions.computer(sid, action="press_key", keys=["Return"])
+        send("log", text="PRD submitted — waiting for bolt.new to start generating…")
+        time.sleep(5.0)
+
         img_b64 = _steel_screenshot(steel, sid)
         img_bytes = base64.b64decode(img_b64) if img_b64 else b""
+        if img_b64:
+            send("screenshot", data=img_b64)
+        send("log", text=f"Post-submit screenshot: {len(img_bytes):,} bytes — handing off to agent.")
+
         send("browser_loading", loading=False)
-        if img_b64:
-            send("screenshot", data=img_b64)
-
-        send("log", text="PRD entered — clicking Build now…")
-        # Click the "Build now" button (right side of the input bar, bottom)
-        # At 1440x900: button is at approximately x=1050, y=537
-        steel.sessions.computer(sid, action="click_mouse", button="left", coordinates=[1050, 537])
-        time.sleep(3.0)
-        send("log", text="Build now clicked — bolt.new is generating the app…")
-
-        img_b64 = _steel_screenshot(steel, sid)
-        img_bytes = base64.b64decode(img_b64) if img_b64 else b""
-        send("log", text=f"Post-submit screenshot: {len(img_bytes)} bytes")
-        if img_b64:
-            send("screenshot", data=img_b64)
-
         current_url = "https://bolt.new"
 
         # ── Gemini Computer Use agent loop ─────────────────────────────────
-        # Only include the screenshot if Steel returned valid image data;
-        # an empty/invalid image causes 400 INVALID_ARGUMENT from the API.
+        # Agent receives the post-submit screenshot. Bolt should already be building.
         initial_parts = [gt.Part(text=task)]
         if len(img_bytes) > 1000:
             initial_parts.append(gt.Part.from_bytes(data=img_bytes, mime_type="image/png"))
@@ -1263,8 +1436,7 @@ def _run_build(send, recv_q, prd_text: str, app_name: str, uid: str | None = Non
                             gt.Part.from_bytes(data=img_bytes, mime_type="image/png"),
                         ]))
                     elif m_type == "disconnect":
-                        send("log", text="User disconnected, halting build.")
-                        return
+                        pass  # Build continues in background when browser closes
                 except queue.Empty:
                     pass
 
@@ -1332,6 +1504,14 @@ def _run_build(send, recv_q, prd_text: str, app_name: str, uid: str | None = Non
                 final = " ".join(p.text for p in safe_parts if getattr(p, "text", None))
                 if final:
                     send("log", text=f"Agent: {final[:300]}")
+                    # Extract deployed URL from agent's final message
+                    import re as _re
+                    _url_match = _re.search(r'https?://[^\s"\'<>]+\.bolt\.host[^\s"\'<>]*', final)
+                    if not _url_match:
+                        _url_match = _re.search(r'https?://[^\s"\'<>]*bolt\.host[^\s"\'<>]*', final)
+                    if _url_match:
+                        current_url = _url_match.group(0).rstrip(".,)")
+                        send("log", text=f"Deployed URL captured: {current_url}")
                 break
 
             # Execute all function calls, collect results.
@@ -1424,7 +1604,15 @@ def _run_build(send, recv_q, prd_text: str, app_name: str, uid: str | None = Non
 
         # ── Step 3: Deploy ─────────────────────────────────────────────────
         send("step_start", step="deploy", label="Deploying", progress=90)
-        send("log", text="Build complete — retrieving deployment URL…")
+        send("log", text=f"Build complete — deployed at: {current_url}")
+        if uid and bid and current_url and "bolt.new" not in current_url:
+            _fs_save_deployed(uid, bid, current_url)
+            # Auto-start marketing + email pipeline in the background
+            threading.Thread(
+                target=_run_auto_pipeline,
+                args=(uid, bid, current_url, prd_text),
+                daemon=True,
+            ).start()
         send("step_done", step="deploy", label="Deploying", progress=100)
         send("done", url=current_url)
 
@@ -1439,14 +1627,38 @@ def _run_build(send, recv_q, prd_text: str, app_name: str, uid: str | None = Non
             try:
                 steel.sessions.release(session.id)
                 send("log", text="Steel.dev session released.")
-                # After release Steel finishes uploading the profile.
-                # Save the profile_id so the next build restores browser state.
-                profile_id = getattr(session, "profile_id", None)
-                if profile_id and uid:
-                    _fs_save_steel_profile(uid, profile_id)
-                    send("log", text="Browser profile saved — next build will auto sign-in.")
             except Exception:
                 pass
+
+
+@app.get("/api/build/status")
+async def build_status_endpoint(request: Request, bid: str = ""):
+    """Return the current build/pipeline status for a business.
+    Checks in-memory registry first, then Firebase."""
+    uid = _get_uid(request)
+    if not uid or not bid:
+        return JSONResponse({"status": "idle"})
+
+    if bid in _active_builds:
+        job = _active_builds[bid]
+        return JSONResponse({
+            "status": "running" if not job["done"] else "done",
+            "eventCount": len(job["events"]),
+        })
+
+    if fs:
+        try:
+            doc = (fs.collection("users").document(uid)
+                     .collection("businesses").document(bid).get())
+            data = doc.to_dict() or {}
+            ps  = data.get("pipelineStatus", "")
+            url = data.get("deployedUrl", "")
+            if ps:
+                return JSONResponse({"status": ps, "deployedUrl": url})
+        except Exception:
+            pass
+
+    return JSONResponse({"status": "idle"})
 
 
 @app.websocket("/api/ws/build")
@@ -1454,7 +1666,7 @@ async def build_websocket(websocket: WebSocket):
     await websocket.accept()
 
     if not genai_client or not STEEL_API_KEY:
-        await websocket.send_text(json.dumps({'type':'error','message':'GEMINI_API_KEY or STEEL_API_KEY missing'}))
+        await websocket.send_text(json.dumps({'type': 'error', 'message': 'GEMINI_API_KEY or STEEL_API_KEY missing'}))
         await websocket.close()
         return
 
@@ -1464,11 +1676,12 @@ async def build_websocket(websocket: WebSocket):
         await websocket.close()
         return
 
-    prd_text = data.get("prd_text", "")
-    app_name = data.get("app_name", "My App")
-    token    = data.get("token", "")
+    prd_text     = data.get("prd_text", "")
+    app_name     = data.get("app_name", "My App")
+    token        = data.get("token", "")
+    bid          = data.get("bid", "")
+    event_offset = int(data.get("event_offset", 0))  # replay from this index on reconnect
 
-    # Resolve Firebase UID from the auth token sent by the client
     uid = None
     if fb_auth and token:
         try:
@@ -1476,60 +1689,96 @@ async def build_websocket(websocket: WebSocket):
         except Exception:
             pass
 
-    recv_q = queue.Queue()
-    loop = asyncio.get_running_loop()
+    # ── Locate or create background job ────────────────────────────────────────
+    if bid and bid in _active_builds and not _active_builds[bid]["done"]:
+        # Reconnect to an already-running build
+        job = _active_builds[bid]
+    else:
+        # Load any existing events from Firestore for this business
+        existing_events = _fs_get_events(uid, bid) if (uid and bid) else []
 
-    def send(evt_type, **kwargs):
-        payload = json.dumps({"type": evt_type, **kwargs})
-        try:
-            asyncio.run_coroutine_threadsafe(websocket.send_text(payload), loop)
-        except Exception:
-            pass
+        # Start a brand-new build job (or resume if there are already events)
+        job = {
+            "events": existing_events,
+            "done":   False,
+            "uid":    uid,
+            "recv_q": queue.Queue(),
+            "lock":   threading.Lock(),
+            "thread": None,
+        }
 
-    def run():
-        import sys, asyncio
-        if sys.platform == "win32":
-            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-            loop_instance = asyncio.ProactorEventLoop()
-            asyncio.set_event_loop(loop_instance)
-        try:
-            _run_build(send, recv_q, prd_text, app_name, uid)
-        except Exception as e:
-            import traceback
-            error_msg = traceback.format_exc()
-            print(f"Runner error: {error_msg}")
-            send("log", text=f"Build error: {e}\n{error_msg}", level="error")
-        finally:
-            send("ws_done")
+        if bid and (bid not in _active_builds or _active_builds[bid]["done"]):
+            _active_builds[bid] = job
+            if not existing_events:
+                _fs_save_pipeline_status(uid, bid, "building")
 
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
+            def send(evt_type, **kwargs):
+                """Store event in registry and Firestore — WS handler polls this list."""
+                payload = {"type": evt_type, **kwargs}
+                with job["lock"]:
+                    job["events"].append(payload)
+                # Persist event to Firestore for reconnection durability
+                if uid and bid:
+                    _fs_log_event(uid, bid, payload)
 
+            def run():
+                if sys.platform == "win32":
+                    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+                    asyncio.set_event_loop(asyncio.ProactorEventLoop())
+                try:
+                    # Only run a fresh build if we haven't already finished it
+                    # (In a real system, we'd also check if it's already running in another thread)
+                    _run_build(send, job["recv_q"], prd_text, app_name, uid, bid)
+                except Exception as e:
+                    import traceback
+                    print(f"Runner error: {traceback.format_exc()}")
+                    send("log", text=f"Build error: {e}", level="error")
+                finally:
+                    send("ws_done")
+                    job["done"] = True
+
+            # If no thread and not done, start it (this handles fresh start and resumed after server restart)
+            t = threading.Thread(target=run, daemon=True)
+            job["thread"] = t
+            t.start()
+        else:
+            # Re-fetch the existing job if it was created between our check and now
+            job = _active_builds.get(bid, job)
+
+    # ── Stream events to this WebSocket client ─────────────────────────────────
+    # Poll job["events"] for new items; incoming WS messages go to job["recv_q"].
+    # On disconnect: just exit this handler — the build keeps running.
+    poll_idx = event_offset
     try:
-        import time as _time
-        last_ping = _time.monotonic()
-        while thread.is_alive():
+        while True:
+            # Send any events produced since last poll
+            with job["lock"]:
+                new_events = job["events"][poll_idx:]
+                poll_idx   = len(job["events"])
+            for ev in new_events:
+                await websocket.send_text(json.dumps(ev))
+
+            # If job finished and we've sent everything, we're done
+            if job["done"] and poll_idx >= len(job["events"]):
+                break
+
+            # Non-blocking receive: relay user interactions to the build thread
             try:
-                msg = await asyncio.wait_for(websocket.receive_json(), timeout=1.0)
-                recv_q.put(msg)
+                msg = await asyncio.wait_for(websocket.receive_json(), timeout=0.05)
+                job["recv_q"].put(msg)
             except asyncio.TimeoutError:
-                # Send keepalive ping every 20 s so proxies don't drop idle WS
-                now = _time.monotonic()
-                if now - last_ping >= 20:
-                    try:
-                        await websocket.send_text(json.dumps({"type": "ping"}))
-                        last_ping = now
-                    except Exception:
-                        break
+                pass
+
+            await asyncio.sleep(0.05)
     except WebSocketDisconnect:
-        recv_q.put({"type": "disconnect"})
+        pass  # Build continues running in the background
     except Exception as e:
         print("Build WS error:", e)
 
 
 # ── Marketing Reels Pipeline ───────────────────────────────────────────────
 
-def _run_reels_pipeline(send, recv_q, target_url: str, uid: str | None = None):
+def _run_reels_pipeline(send, recv_q, target_url: str, uid: str | None = None, bid: str | None = None):
     """
     1. Spin up a Steel browser pointing to target_url.
     2. Take screenshots.
@@ -1713,6 +1962,10 @@ Format your output exactly as a JSON array of 2 strings:
                     send("log", text=f"Failed to upload video {v_idx+1}: {e}", level="error")
         
         send("step_done", step="upload", label="Finished", progress=100)
+        
+        if uid and bid and final_urls:
+            _fs_save_pipeline_status(uid, bid, "reels_complete", {"marketingReelUrls": final_urls})
+            
         send("done", urls=final_urls)
 
     except Exception as e:
@@ -1727,6 +1980,51 @@ Format your output exactly as a JSON array of 2 strings:
                 steel.sessions.release(session.id)
             except Exception:
                 pass
+
+
+def _run_auto_pipeline(uid: str, bid: str, deployed_url: str, prd_text: str = ""):
+    """
+    Autonomous background pipeline: marketing reels → email outreach.
+    Fires automatically after a build completes with a deployed URL.
+    Saves status updates to Firebase; no WebSocket required.
+    """
+    import sys as _sys
+    if _sys.platform == "win32":
+        import asyncio as _asyncio
+        _asyncio.set_event_loop_policy(_asyncio.WindowsProactorEventLoopPolicy())
+        _asyncio.set_event_loop(_asyncio.ProactorEventLoop())
+
+    def _silent_send(evt_type, **kwargs):
+        """Absorb all events silently (no WS connected). Update Firebase on key events."""
+        if evt_type in ("step_start", "step_done", "done"):
+            print(f"[auto_pipeline] {evt_type}: {kwargs.get('label') or kwargs.get('step') or ''}")
+
+    # ── 1. Marketing reels ─────────────────────────────────────────────────────
+    print(f"[auto_pipeline] Starting reels for {deployed_url}")
+    _fs_save_pipeline_status(uid, bid, "reels")
+    try:
+        _run_reels_pipeline(_silent_send, queue.Queue(), deployed_url, uid, bid)
+        print("[auto_pipeline] Reels done.")
+    except Exception as e:
+        print(f"[auto_pipeline] Reels error: {e}")
+
+    # ── 2. Email outreach ──────────────────────────────────────────────────────
+    print("[auto_pipeline] Starting email outreach.")
+    _fs_save_pipeline_status(uid, bid, "emailing")
+    try:
+        payload = {
+            "business_description": prd_text[:500] if prd_text else f"App at {deployed_url}",
+            "target_customer": "",
+            "calendar_link": "",
+            "prospect_count": 20,
+        }
+        _run_email_pipeline(_silent_send, queue.Queue(), payload, uid, bid)
+        print("[auto_pipeline] Email outreach done.")
+    except Exception as e:
+        print(f"[auto_pipeline] Email error: {e}")
+
+    _fs_save_pipeline_status(uid, bid, "complete")
+    print(f"[auto_pipeline] Pipeline complete for bid={bid}")
 
 
 @app.websocket("/api/ws/marketing/reels")
@@ -1746,6 +2044,7 @@ async def marketing_reels_websocket(websocket: WebSocket):
 
     target_url = data.get("target_url", "https://calcgpt.ai")
     token = data.get("token", "")
+    bid = data.get("bid", "")
 
     uid = None
     if fb_auth and token:
@@ -1771,7 +2070,7 @@ async def marketing_reels_websocket(websocket: WebSocket):
             loop_instance = asyncio.ProactorEventLoop()
             asyncio.set_event_loop(loop_instance)
         try:
-            _run_reels_pipeline(send, recv_q, target_url, uid)
+            _run_reels_pipeline(send, recv_q, target_url, uid, bid)
         except Exception as e:
             import traceback
             error_msg = traceback.format_exc()
@@ -1810,63 +2109,31 @@ import csv as _csv
 import io as _io
 import uuid as _uuid_mod
 
-EXA_API_KEY         = os.environ.get("EXA_API_KEY", "")
-GMAIL_CLIENT_ID     = os.environ.get("GMAIL_CLIENT_ID", "")
-GMAIL_CLIENT_SECRET = os.environ.get("GMAIL_CLIENT_SECRET", "")
-GMAIL_REDIRECT_URI  = os.environ.get("GMAIL_REDIRECT_URI", "http://localhost:8000/api/gmail/callback")
+EXA_API_KEY        = os.environ.get("EXA_API_KEY", "")
+GMAIL_SENDER       = os.environ.get("GMAIL_SENDER", "")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 
-# ── Gmail / Firestore helpers ───────────────────────────────
+# ── SMTP send helper ────────────────────────────────────────
 
-def _fs_get_gmail_tokens(uid: str) -> dict:
-    if not fs or not uid:
-        return {}
+def _smtp_send(to_addr: str, subject: str, body: str) -> str | None:
+    """Send via Gmail SMTP. Returns None on success, error string on failure."""
+    if not GMAIL_SENDER or not GMAIL_APP_PASSWORD:
+        return "GMAIL_SENDER or GMAIL_APP_PASSWORD not set in .env"
+    import smtplib
+    import email.mime.text
+    import email.mime.multipart
     try:
-        doc = (fs.collection("users").document(uid)
-                 .collection("private").document("gmailTokens").get())
-        return doc.to_dict() or {}
-    except Exception:
-        return {}
-
-
-def _fs_save_gmail_tokens(uid: str, tokens: dict):
-    if not fs or not uid:
-        return
-    try:
-        (fs.collection("users").document(uid)
-           .collection("private").document("gmailTokens")
-           .set(tokens, merge=True))
-    except Exception as e:
-        print(f"Failed saving Gmail tokens: {e}")
-
-
-def _get_gmail_service(uid: str):
-    """Return authenticated Gmail API service for uid, or None."""
-    tokens = _fs_get_gmail_tokens(uid)
-    if not tokens.get("refresh_token"):
+        msg = email.mime.multipart.MIMEMultipart()
+        msg["From"]    = GMAIL_SENDER
+        msg["To"]      = to_addr
+        msg["Subject"] = subject
+        msg.attach(email.mime.text.MIMEText(body, "plain"))
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(GMAIL_SENDER, GMAIL_APP_PASSWORD)
+            smtp.sendmail(GMAIL_SENDER, to_addr, msg.as_string())
         return None
-    try:
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request as GoogleRequest
-        from googleapiclient.discovery import build as google_build
-
-        creds = Credentials(
-            token=tokens.get("access_token"),
-            refresh_token=tokens["refresh_token"],
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=GMAIL_CLIENT_ID,
-            client_secret=GMAIL_CLIENT_SECRET,
-            scopes=["https://www.googleapis.com/auth/gmail.send"],
-        )
-        if not creds.valid:
-            creds.refresh(GoogleRequest())
-            _fs_save_gmail_tokens(uid, {
-                "access_token": creds.token,
-                "token_expiry": creds.expiry.isoformat() if creds.expiry else None,
-            })
-        return google_build("gmail", "v1", credentials=creds)
     except Exception as e:
-        print(f"Gmail service error: {e}")
-        return None
+        return str(e)
 
 
 def _fs_save_campaign(uid: str, campaign_id: str, meta: dict):
@@ -1953,7 +2220,7 @@ def _exa_to_prospects(results, category: str) -> list[dict]:
 
 # ── Email pipeline ──────────────────────────────────────────
 
-def _run_email_pipeline(send, recv_q, payload: dict, uid: str | None):
+def _run_email_pipeline(send, recv_q, payload: dict, uid: str | None, bid: str | None = None):
     business_desc   = payload.get("business_description", "")
     target_customer = payload.get("target_customer", "")
     cal_link        = payload.get("calendar_link", "")
@@ -1964,6 +2231,10 @@ def _run_email_pipeline(send, recv_q, payload: dict, uid: str | None):
     n_customers  = max(1, round(n_prospects * 0.50))
     n_lookalikes = max(1, n_prospects - n_investors - n_customers)
     campaign_id  = str(_uuid_mod.uuid4())
+
+    # Persist campaign link to business immediately if we have a bid
+    if uid and bid:
+        _fs_save_pipeline_status(uid, bid, "emailing", {"currentEmailCampaignId": campaign_id})
 
     try:
         from exa_py import Exa
@@ -2021,15 +2292,25 @@ lookalike_queries: fallback queries (used when no customer CSV is provided) to f
     send("step_done", step="analyze")
     send("log", text=f"Strategy ready — {n_investors} investors · {n_customers} customers · {n_lookalikes} interviews.")
 
+    # Initialize campaign record early for the UI to find
+    if uid:
+        _fs_save_campaign(uid, campaign_id, {
+            "business_description": business_desc,
+            "target_customer":      target_customer,
+            "calendar_link":        cal_link,
+            "status":               "searching",
+        })
+
     all_prospects: list[dict] = []
 
     def _exa_search(query: str, category: str, count: int):
         try:
             res = exa.search_and_contents(
                 query,
-                type="neural",
+                type="auto",
                 num_results=min(count + 3, 15),
-                highlights={"num_sentences": 3},
+                category="people",
+                highlights={"max_characters": 1200},
                 text={"max_characters": 2000},
             )
             return _exa_to_prospects(res.results, category)[:count]
@@ -2046,6 +2327,7 @@ lookalike_queries: fallback queries (used when no customer CSV is provided) to f
         send("log", text=f'Searching: "{q}"')
         for p in _exa_search(q, "investor", needed):
             all_prospects.append(p)
+            if uid: _fs_save_prospect(uid, campaign_id, p)
             send("prospect_found", prospect=p)
     send("step_done", step="investors")
 
@@ -2058,6 +2340,7 @@ lookalike_queries: fallback queries (used when no customer CSV is provided) to f
         send("log", text=f'Searching: "{q}"')
         for p in _exa_search(q, "customer", needed):
             all_prospects.append(p)
+            if uid: _fs_save_prospect(uid, campaign_id, p)
             send("prospect_found", prospect=p)
     send("step_done", step="customers")
 
@@ -2082,11 +2365,12 @@ lookalike_queries: fallback queries (used when no customer CSV is provided) to f
                         res = exa.find_similar_and_contents(
                             url,
                             num_results=min(needed + 2, 5),
-                            highlights={"num_sentences": 3},
+                            highlights={"max_characters": 1200},
                             text={"max_characters": 2000},
                         )
                         for p in _exa_to_prospects(res.results, "interview")[:needed]:
                             all_prospects.append(p)
+                            if uid: _fs_save_prospect(uid, campaign_id, p)
                             send("prospect_found", prospect=p)
                         seeded = True
                     except Exception as e:
@@ -2103,6 +2387,7 @@ lookalike_queries: fallback queries (used when no customer CSV is provided) to f
             send("log", text=f'Searching: "{q}"')
             for p in _exa_search(q, "interview", needed):
                 all_prospects.append(p)
+                if uid: _fs_save_prospect(uid, campaign_id, p)
                 send("prospect_found", prospect=p)
     send("step_done", step="lookalikes")
 
@@ -2152,6 +2437,7 @@ Prospects:
                 if p["id"] in draft_map:
                     p["draft_subject"] = draft_map[p["id"]].get("subject", "")
                     p["draft_body"]    = draft_map[p["id"]].get("body", "")
+                    if uid: _fs_save_prospect(uid, campaign_id, p)
         except Exception as e:
             send("log", text=f"Email drafting error: {e}. Drafts left blank.", level="warn")
 
@@ -2166,125 +2452,24 @@ Prospects:
         "prospect_count":       len(all_prospects),
         "status":               "complete",
     })
+    # final sync just in case
     for p in all_prospects:
         _fs_save_prospect(uid, campaign_id, p)
+
+    if uid and bid:
+        _fs_save_pipeline_status(uid, bid, "complete")
 
     emails_found = sum(1 for p in all_prospects if p["email"])
     send("done", campaign_id=campaign_id, total=len(all_prospects), emails_found=emails_found)
     send("log", text=f"Complete — {len(all_prospects)} prospects, {emails_found} with emails.")
 
 
-# ── Gmail OAuth routes ──────────────────────────────────────
-
-@app.get("/api/gmail/auth")
-async def gmail_auth(request: Request):
-    uid = _get_uid(request)
-    if not uid:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    if not GMAIL_CLIENT_ID or not GMAIL_CLIENT_SECRET:
-        return JSONResponse({"error": "Gmail OAuth not configured on server"}, status_code=500)
-    try:
-        from google_auth_oauthlib.flow import Flow
-        import secrets
-
-        flow = Flow.from_client_config(
-            {"web": {
-                "client_id":     GMAIL_CLIENT_ID,
-                "client_secret": GMAIL_CLIENT_SECRET,
-                "auth_uri":      "https://accounts.google.com/o/oauth2/auth",
-                "token_uri":     "https://oauth2.googleapis.com/token",
-                "redirect_uris": [GMAIL_REDIRECT_URI],
-            }},
-            scopes=[
-                "https://www.googleapis.com/auth/gmail.send",
-                "https://www.googleapis.com/auth/userinfo.email",
-            ],
-            redirect_uri=GMAIL_REDIRECT_URI,
-        )
-        state = f"{uid}:{secrets.token_urlsafe(16)}"
-        auth_url, _ = flow.authorization_url(
-            access_type="offline", prompt="consent", state=state,
-        )
-        if fs:
-            fs.collection("users").document(uid).set({"gmailOAuthState": state}, merge=True)
-        return JSONResponse({"auth_url": auth_url})
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.get("/api/gmail/callback")
-async def gmail_callback(request: Request):
-    code  = request.query_params.get("code", "")
-    state = request.query_params.get("state", "")
-    if not code or not state or ":" not in state:
-        return HTMLResponse("<p>Invalid callback parameters.</p>", status_code=400)
-
-    uid = state.split(":")[0]
-    if fs:
-        try:
-            saved = (fs.collection("users").document(uid).get().to_dict() or {}).get("gmailOAuthState", "")
-            if saved != state:
-                return HTMLResponse("<p>State mismatch — please try again.</p>", status_code=400)
-        except Exception:
-            pass
-
-    try:
-        from google_auth_oauthlib.flow import Flow
-        from googleapiclient.discovery import build as google_build
-
-        flow = Flow.from_client_config(
-            {"web": {
-                "client_id":     GMAIL_CLIENT_ID,
-                "client_secret": GMAIL_CLIENT_SECRET,
-                "auth_uri":      "https://accounts.google.com/o/oauth2/auth",
-                "token_uri":     "https://oauth2.googleapis.com/token",
-                "redirect_uris": [GMAIL_REDIRECT_URI],
-            }},
-            scopes=[
-                "https://www.googleapis.com/auth/gmail.send",
-                "https://www.googleapis.com/auth/userinfo.email",
-            ],
-            redirect_uri=GMAIL_REDIRECT_URI,
-            state=state,
-        )
-        flow.fetch_token(code=code)
-        creds = flow.credentials
-
-        gmail_address = ""
-        try:
-            svc  = google_build("oauth2", "v2", credentials=creds)
-            info = svc.userinfo().get().execute()
-            gmail_address = info.get("email", "")
-        except Exception:
-            pass
-
-        _fs_save_gmail_tokens(uid, {
-            "access_token":  creds.token,
-            "refresh_token": creds.refresh_token,
-            "token_expiry":  creds.expiry.isoformat() if creds.expiry else None,
-            "gmail_address": gmail_address,
-        })
-
-        close_script = f"window.opener && window.opener.postMessage({{type:'gmail_connected',email:{json.dumps(gmail_address)}}},'*'); window.close();"
-        return HTMLResponse(f"""<!DOCTYPE html><html><head>
-<script>{close_script}</script>
-</head><body style="font-family:sans-serif;padding:40px;text-align:center">
-<p>Gmail connected as <strong>{gmail_address}</strong>.<br>You can close this window.</p>
-</body></html>""")
-    except Exception as e:
-        return HTMLResponse(f"<p>OAuth error: {e}</p>", status_code=500)
-
+# ── Gmail status + send routes ──────────────────────────────
 
 @app.get("/api/gmail/status")
 async def gmail_status(request: Request):
-    uid = _get_uid(request)
-    if not uid:
-        return JSONResponse({"connected": False})
-    tokens = _fs_get_gmail_tokens(uid)
-    return JSONResponse({
-        "connected": bool(tokens.get("refresh_token")),
-        "email":     tokens.get("gmail_address", ""),
-    })
+    configured = bool(GMAIL_SENDER and GMAIL_APP_PASSWORD)
+    return JSONResponse({"configured": configured, "email": GMAIL_SENDER if configured else ""})
 
 
 @app.post("/api/email/send")
@@ -2303,33 +2488,20 @@ async def email_send(request: Request):
     if not to_addr:
         return JSONResponse({"error": "No recipient address"}, status_code=400)
 
-    svc = _get_gmail_service(uid)
-    if not svc:
-        return JSONResponse({"error": "Gmail not connected"}, status_code=400)
+    err = _smtp_send(to_addr, subject, email_body)
+    if err:
+        return JSONResponse({"error": err}, status_code=500)
 
-    try:
-        import email.mime.text
-        import email.mime.multipart
+    if fs and campaign_id and prospect_id:
+        try:
+            (fs.collection("users").document(uid)
+               .collection("emailCampaigns").document(campaign_id)
+               .collection("prospects").document(prospect_id)
+               .set({"sent": True, "sent_at": fb_fs.SERVER_TIMESTAMP}, merge=True))
+        except Exception:
+            pass
 
-        msg = email.mime.multipart.MIMEMultipart()
-        msg["To"]      = to_addr
-        msg["Subject"] = subject
-        msg.attach(email.mime.text.MIMEText(email_body, "plain"))
-        raw    = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-        result = svc.users().messages().send(userId="me", body={"raw": raw}).execute()
-
-        if fs and campaign_id and prospect_id:
-            try:
-                (fs.collection("users").document(uid)
-                   .collection("emailCampaigns").document(campaign_id)
-                   .collection("prospects").document(prospect_id)
-                   .set({"sent": True, "sent_at": fb_fs.SERVER_TIMESTAMP}, merge=True))
-            except Exception:
-                pass
-
-        return JSONResponse({"ok": True, "message_id": result.get("id", "")})
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/email/campaign/{campaign_id}/csv")
@@ -2364,6 +2536,19 @@ async def email_campaign_csv(campaign_id: str, request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+# ── Email pipeline status endpoint ──────────────────────────
+
+@app.get("/api/email/pipeline/status")
+async def email_pipeline_status(jid: str = ""):
+    if not jid or jid not in _active_email_jobs:
+        return JSONResponse({"status": "idle"})
+    job = _active_email_jobs[jid]
+    return JSONResponse({
+        "status":     "done" if job["done"] else "running",
+        "eventCount": len(job["events"]),
+    })
+
+
 # ── Emailer WebSocket ───────────────────────────────────────
 
 @app.websocket("/api/ws/marketing/email")
@@ -2381,47 +2566,69 @@ async def marketing_email_websocket(websocket: WebSocket):
         await websocket.close()
         return
 
-    token = data.get("token", "")
-    uid   = None
+    token        = data.get("token", "")
+    jid          = data.get("job_id", "")
+    bid          = data.get("bid", "")
+    event_offset = int(data.get("event_offset", 0))
+    uid          = None
     if fb_auth and token:
         try:
             uid = fb_auth.verify_id_token(token)["uid"]
         except Exception:
             pass
 
-    recv_q = queue.Queue()
-    loop   = asyncio.get_running_loop()
+    # ── Locate or create background job ───────────────────────
+    if jid and jid in _active_email_jobs and not _active_email_jobs[jid]["done"]:
+        # Reconnect to already-running pipeline
+        job = _active_email_jobs[jid]
+    else:
+        # Start a fresh pipeline job
+        job = {"events": [], "done": False, "lock": threading.Lock()}
+        if jid:
+            _active_email_jobs[jid] = job
 
-    def send(evt_type, **kwargs):
-        payload = json.dumps({"type": evt_type, **kwargs})
-        try:
-            asyncio.run_coroutine_threadsafe(websocket.send_text(payload), loop)
-        except Exception:
-            pass
+        def send(evt_type, **kwargs):
+            """Store event in job registry — WS handler polls this list."""
+            payload = {"type": evt_type, **kwargs}
+            with job["lock"]:
+                job["events"].append(payload)
 
-    def run():
-        import sys
-        if sys.platform == "win32":
-            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-            asyncio.set_event_loop(asyncio.ProactorEventLoop())
-        try:
-            _run_email_pipeline(send, recv_q, data, uid)
-        except Exception as e:
-            import traceback
-            send("log", text=f"Pipeline error: {e}\n{traceback.format_exc()}", level="error")
-        finally:
-            send("ws_done")
+        def run():
+            import sys
+            if sys.platform == "win32":
+                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+                asyncio.set_event_loop(asyncio.ProactorEventLoop())
+            try:
+                _run_email_pipeline(send, queue.Queue(), data, uid, bid)
+            except Exception as e:
+                import traceback
+                send("log", text=f"Pipeline error: {e}\n{traceback.format_exc()}", level="error")
+            finally:
+                with job["lock"]:
+                    job["done"] = True
+                send("ws_done")
 
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
+        threading.Thread(target=run, daemon=True).start()
 
+    # ── Stream events to this WebSocket client ─────────────────
+    # Polls job["events"] for new items. On disconnect the pipeline
+    # keeps running; the client can reconnect and replay from offset.
+    poll_idx = event_offset
     try:
         import time as _time
         last_ping = _time.monotonic()
-        while thread.is_alive():
+        while True:
+            with job["lock"]:
+                new_events = job["events"][poll_idx:]
+                poll_idx   = len(job["events"])
+            for ev in new_events:
+                await websocket.send_text(json.dumps(ev))
+
+            if job["done"] and poll_idx >= len(job["events"]):
+                break
+
             try:
-                msg = await asyncio.wait_for(websocket.receive_json(), timeout=1.0)
-                recv_q.put(msg)
+                await asyncio.wait_for(websocket.receive_json(), timeout=1.0)
             except asyncio.TimeoutError:
                 now = _time.monotonic()
                 if now - last_ping >= 20:
@@ -2431,6 +2638,6 @@ async def marketing_email_websocket(websocket: WebSocket):
                     except Exception:
                         break
     except WebSocketDisconnect:
-        recv_q.put({"type": "disconnect"})
+        pass  # Pipeline keeps running; client may reconnect
     except Exception as e:
         print("Email WS error:", e)

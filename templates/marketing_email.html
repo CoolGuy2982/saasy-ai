@@ -5,67 +5,1274 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Saasy — Cold Email Engine</title>
   <link rel="stylesheet" href="/static/css/main.css" />
+  <link rel="stylesheet" href="/static/css/unified-stepper.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Form state ── */
+    .email-form-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      padding: 28px 24px;
+      overflow-y: auto;
+      height: 100%;
+      box-sizing: border-box;
+    }
+    .email-form-panel h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--gray-900);
+      margin: 0 0 2px;
+    }
+    .email-form-panel .sub {
+      font-size: 13px;
+      color: var(--gray-500);
+      margin: 0 0 8px;
+      line-height: 1.5;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--gray-700);
+      letter-spacing: 0.02em;
+    }
+    .form-group label .opt { font-weight: 400; color: var(--gray-400); }
+    .form-group textarea,
+    .form-group input[type="text"],
+    .form-group input[type="number"],
+    .form-group input[type="url"],
+    .form-group input[type="email"] {
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-size: 13px;
+      font-family: var(--font);
+      color: var(--gray-900);
+      resize: vertical;
+      transition: border-color 0.15s;
+      outline: none;
+    }
+    .form-group textarea:focus,
+    .form-group input:focus { border-color: var(--gray-400); }
+    .form-group textarea { min-height: 80px; }
+    .form-row { display: flex; gap: 12px; }
+    .form-row .form-group { flex: 1; }
+
+    .gmail-status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .gmail-status.configured {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #15803d;
+    }
+    .gmail-status.not-configured {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      color: #c2410c;
+    }
+    .gmail-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .gmail-dot.configured    { background: #22c55e; }
+    .gmail-dot.not-configured { background: #f97316; }
+
+    .file-upload-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: var(--gray-50);
+      border: 1px dashed var(--gray-300);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      color: var(--gray-600);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .file-upload-label:hover { background: var(--gray-100); }
+    .file-upload-label.has-file { border-style: solid; border-color: var(--gray-400); color: var(--gray-800); }
+    #csv-input { display: none; }
+
+    .email-cta {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 20px;
+      background: var(--gray-900);
+      color: var(--white);
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 500;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .email-cta:hover { opacity: 0.88; }
+    .email-cta:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .alloc-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+    .alloc-pill {
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .alloc-pill.investor  { background: #eff6ff; color: #1d4ed8; }
+    .alloc-pill.customer  { background: #f0fdf4; color: #15803d; }
+    .alloc-pill.interview { background: #fff7ed; color: #c2410c; }
+
+    /* ── Right panel ── */
+    .email-right-panel {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      background: var(--white);
+    }
+    .table-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--gray-100);
+      flex-shrink: 0;
+    }
+    .table-toolbar h3 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--gray-800);
+      margin: 0;
+      flex: 1;
+    }
+    .filter-btn {
+      padding: 4px 10px;
+      border: 1px solid var(--gray-200);
+      border-radius: 999px;
+      font-size: 11px;
+      font-family: var(--font);
+      background: var(--white);
+      color: var(--gray-600);
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .filter-btn:hover, .filter-btn.active {
+      background: var(--gray-900);
+      color: var(--white);
+      border-color: var(--gray-900);
+    }
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 10px;
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-xs);
+      background: var(--white);
+      font-size: 11px;
+      font-family: var(--font);
+      color: var(--gray-600);
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .icon-btn:hover { background: var(--gray-50); }
+
+    .prospects-table-wrap { flex: 1; overflow-y: auto; }
+    .prospects-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .prospects-table th {
+      position: sticky;
+      top: 0;
+      background: var(--gray-50);
+      padding: 8px 12px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--gray-500);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--gray-100);
+      white-space: nowrap;
+    }
+    .prospects-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--gray-50);
+      vertical-align: top;
+      color: var(--gray-800);
+    }
+    .prospects-table tr:hover td { background: var(--gray-50); }
+
+    .cat-badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+    .cat-badge.investor  { background: #eff6ff; color: #1d4ed8; }
+    .cat-badge.customer  { background: #f0fdf4; color: #15803d; }
+    .cat-badge.interview { background: #fff7ed; color: #c2410c; }
+
+    .email-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .email-status.ready  { color: #15803d; }
+    .email-status.needed { color: #d97706; }
+    .email-status.sent   { color: var(--gray-400); }
+
+    .e-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .e-dot.ready  { background: #22c55e; }
+    .e-dot.needed { background: #f59e0b; }
+    .e-dot.sent   { background: var(--gray-300); }
+
+    .name-cell { font-weight: 500; color: var(--gray-900); }
+    .name-cell a { color: inherit; text-decoration: none; }
+    .name-cell a:hover { text-decoration: underline; }
+    .title-cell { color: var(--gray-500); font-size: 11px; margin-top: 2px; }
+    .draft-preview {
+      color: var(--gray-500);
+      font-size: 11px;
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .send-row-btn {
+      padding: 4px 10px;
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-xs);
+      background: var(--white);
+      font-size: 11px;
+      font-family: var(--font);
+      color: var(--gray-700);
+      cursor: pointer;
+      transition: all 0.12s;
+      white-space: nowrap;
+    }
+    .send-row-btn:hover { background: var(--gray-900); color: var(--white); border-color: var(--gray-900); }
+    .send-row-btn.sent-btn { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; cursor: default; }
+
+    .drawer-row td { padding: 0 !important; background: #fafafa !important; }
+    .drawer-inner {
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .drawer-inner label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--gray-500);
+      display: block;
+      margin-bottom: 3px;
+    }
+    .drawer-inner input,
+    .drawer-inner textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-family: var(--font);
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-xs);
+      background: var(--white);
+      color: var(--gray-900);
+      outline: none;
+    }
+    .drawer-inner textarea { min-height: 100px; resize: vertical; }
+    .drawer-inner input:focus, .drawer-inner textarea:focus { border-color: var(--gray-400); }
+    .drawer-actions { display: flex; gap: 8px; }
+    .drawer-send-btn {
+      padding: 7px 16px;
+      background: var(--gray-900);
+      color: var(--white);
+      border: none;
+      border-radius: var(--radius-xs);
+      font-size: 12px;
+      font-family: var(--font);
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .drawer-send-btn:hover { opacity: 0.85; }
+    .drawer-send-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .drawer-cancel-btn {
+      padding: 7px 12px;
+      background: transparent;
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-xs);
+      font-size: 12px;
+      font-family: var(--font);
+      color: var(--gray-600);
+      cursor: pointer;
+    }
+    .drawer-cancel-btn:hover { background: var(--gray-100); }
+    .drawer-email-note { font-size: 11px; color: #d97706; }
+
+    /* ── Done summary ── */
+    .summary-card {
+      background: var(--gray-50);
+      border: 1px solid var(--gray-100);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .summary-card h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--gray-900);
+      margin: 0;
+    }
+    .stat-row { display: flex; gap: 20px; }
+    .stat-item { display: flex; flex-direction: column; gap: 2px; }
+    .stat-value { font-size: 22px; font-weight: 700; color: var(--gray-900); line-height: 1; }
+    .stat-label { font-size: 11px; color: var(--gray-500); }
+    .send-all-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: var(--gray-900);
+      color: var(--white);
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 500;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .send-all-btn:hover { opacity: 0.85; }
+    .send-all-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .table-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 60px 20px;
+      color: var(--gray-400);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .right-form-preview {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 16px;
+      padding: 40px;
+      text-align: center;
+    }
+    .right-form-preview .icon-wrap {
+      width: 64px; height: 64px;
+      background: var(--gray-100);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--gray-400);
+    }
+    .right-form-preview h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--gray-800);
+      margin: 0;
+    }
+    .right-form-preview p {
+      font-size: 13px;
+      color: var(--gray-400);
+      margin: 0;
+      max-width: 280px;
+      line-height: 1.5;
+    }
+  </style>
 </head>
-<body class="dashboard-page overflow-hidden">
+<body class="build-page">
+  {% include 'stepper_fragment.html' %}
 
-  <!-- Sidebar (Reused from Dashboard) -->
-  <aside class="sidebar">
-    <div class="sidebar-logo">
-      <div class="logo-mark small">
-        <svg width="20" height="20" viewBox="0 0 28 28" fill="none">
-          <rect x="0" y="0" width="13" height="13" rx="3" fill="currentColor"/>
-          <rect x="15" y="0" width="13" height="13" rx="3" fill="currentColor" opacity="0.4"/>
-          <rect x="0" y="15" width="13" height="13" rx="3" fill="currentColor" opacity="0.4"/>
-          <rect x="15" y="15" width="13" height="13" rx="3" fill="currentColor"/>
+  <!-- Header -->
+  <header class="build-header">
+    <div class="build-header-left">
+      <a href="/marketing" class="build-back">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <polyline points="15 18 9 12 15 6"/>
         </svg>
+      </a>
+      <div class="build-header-logo">
+        <svg width="18" height="18" viewBox="0 0 28 28" fill="none">
+          <rect x="0" y="0" width="13" height="13" rx="2.5" fill="currentColor"/>
+          <rect x="15" y="0" width="13" height="13" rx="2.5" fill="currentColor" opacity="0.35"/>
+          <rect x="0" y="15" width="13" height="13" rx="2.5" fill="currentColor" opacity="0.35"/>
+          <rect x="15" y="15" width="13" height="13" rx="2.5" fill="currentColor"/>
+        </svg>
+        <span>Saasy Outreach</span>
       </div>
-      <span class="logo-text">Saasy</span>
+      <div class="build-divider"></div>
+      <div class="build-title-wrap">
+        <span class="build-title">Cold Email Engine</span>
+      </div>
     </div>
+    <div class="build-header-right">
+      <div class="build-status" id="build-status">
+        <span class="build-status-dot" id="status-dot"></span>
+        <span id="build-status-text">Ready</span>
+      </div>
+    </div>
+  </header>
 
-    <nav class="sidebar-nav">
-      <a href="/dashboard" class="nav-item">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-          <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-        </svg>
-        <span>Businesses</span>
-      </a>
-      <a href="/marketing" class="nav-item active">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-          <polyline points="22,6 12,13 2,6"/>
-        </svg>
-        <span>Marketing</span>
-      </a>
-    </nav>
-  </aside>
+  <!-- Layout -->
+  <div class="build-layout">
 
-  <!-- Main content -->
-  <div class="main-content" style="background-color: var(--white);">
+    <!-- Left panel -->
+    <div class="build-left" id="left-panel">
 
-    <!-- Top bar -->
-    <header class="topbar" style="border-bottom: 1px solid var(--gray-100); padding-bottom: 20px; align-items: center;">
-      <div style="display: flex; align-items: center; gap: 16px;">
-        <a href="/marketing" class="btn-back" aria-label="Go back">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="19" y1="12" x2="5" y2="12"></line>
-            <polyline points="12 19 5 12 12 5"></polyline>
-          </svg>
-        </a>
+      <!-- State: form -->
+      <div id="state-form" class="email-form-panel">
         <div>
-          <h2 class="page-title">Cold Email Engine</h2>
-          <p class="page-sub">Draft and schedule automatic outreach.</p>
+          <h2>Find &amp; Email Prospects</h2>
+          <p class="sub">Saasy uses Exa.ai to find investors, customers, and interview candidates — then drafts personalized emails with Gemini.</p>
+          <div class="alloc-pills">
+            <span class="alloc-pill investor">25% Investors</span>
+            <span class="alloc-pill customer">50% Customers</span>
+            <span class="alloc-pill interview">25% Interviews</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Business description <span class="opt">*</span></label>
+          <textarea id="f-business" placeholder="Describe your product, what it does, and the problem it solves. More detail = better prospects."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Target customer <span class="opt">*</span></label>
+          <textarea id="f-customer" placeholder="E.g. 'Head of Operations at e-commerce companies with 50-500 employees'" style="min-height:60px"></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Cal.com / Calendly link <span class="opt">(optional)</span></label>
+            <input type="url" id="f-cal" placeholder="https://cal.com/you/30min" />
+          </div>
+          <div class="form-group" style="max-width:90px">
+            <label>Prospects</label>
+            <input type="number" id="f-count" value="40" min="10" max="100" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Existing customers CSV <span class="opt">(optional — for interview scheduling)</span></label>
+          <label class="file-upload-label" for="csv-input" id="csv-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <span id="csv-label-text">Upload CSV (include website, linkedin, or url column)</span>
+          </label>
+          <input type="file" id="csv-input" accept=".csv,text/csv" />
+        </div>
+
+        <div class="form-group">
+          <label>Gmail (for sending)</label>
+          <div class="gmail-status not-configured" id="gmail-status">
+            <div class="gmail-dot not-configured" id="gmail-dot"></div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="2" y="4" width="20" height="16" rx="2"/>
+              <polyline points="2,4 12,13 22,4"/>
+            </svg>
+            <span id="gmail-label">GMAIL_SENDER + GMAIL_APP_PASSWORD not set in .env</span>
+          </div>
+        </div>
+
+        <button class="email-cta" id="cta-btn" type="button" onclick="startPipeline()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          Find Prospects &amp; Draft Emails
+        </button>
+      </div>
+
+      <!-- State: pipeline running -->
+      <div id="state-pipeline" style="display:none; flex-direction:column; height:100%;">
+        <div class="pipeline" style="padding:20px 20px 0">
+          <div class="pipeline-header">
+            <span class="pipeline-label">Pipeline</span>
+            <span class="pipeline-pct" id="pipeline-pct">0%</span>
+          </div>
+          <div class="pipeline-track">
+            <div class="pipeline-progress" id="pipeline-progress" style="width:0%"></div>
+          </div>
+          <div class="pipeline-steps" id="pipeline-steps"></div>
+        </div>
+        <div class="build-log" style="flex:1;margin:16px 20px 20px">
+          <div class="build-log-header">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+            </svg>
+            <span>Pipeline log</span>
+          </div>
+          <div class="build-log-body" id="build-log-body"></div>
         </div>
       </div>
-    </header>
 
-    <div class="marketing-grid animate-in" style="--delay: 0.1s; padding: 48px; display: flex; align-items: center; justify-content: center; height: 100%;">
-      <p style="color: var(--gray-400); font-size: 14px;">Placeholder for Outreach Engine functionality.</p>
+      <!-- State: done -->
+      <div id="state-done" style="display:none; flex-direction:column; gap:16px; padding:24px; overflow-y:auto;">
+        <div class="summary-card">
+          <h3>Campaign Complete</h3>
+          <div class="stat-row">
+            <div class="stat-item">
+              <span class="stat-value" id="stat-total">0</span>
+              <span class="stat-label">Prospects found</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" id="stat-emails">0</span>
+              <span class="stat-label">Emails ready</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" id="stat-sent">0</span>
+              <span class="stat-label">Sent</span>
+            </div>
+          </div>
+          <button class="send-all-btn" id="send-all-btn" type="button" onclick="sendAllReady()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+            Send All Ready
+          </button>
+        </div>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="icon-btn" type="button" onclick="downloadCSV()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Download CSV
+          </button>
+          <button class="icon-btn" type="button" onclick="resetForm()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="1 4 1 10 7 10"/>
+              <path d="M3.51 15a9 9 0 1 0 .49-3.1"/>
+            </svg>
+            New Campaign
+          </button>
+        </div>
+
+        <!-- Compact pipeline summary -->
+        <div class="pipeline" style="opacity:0.55">
+          <div class="pipeline-steps" id="pipeline-steps-done"></div>
+        </div>
+      </div>
+
     </div>
+
+    <!-- Right panel -->
+    <div class="build-right" style="padding:0;overflow:hidden">
+      <div class="email-right-panel">
+
+        <!-- Preview (while form visible) -->
+        <div class="right-form-preview" id="right-preview">
+          <div class="icon-wrap">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+              <polyline points="22,6 12,13 2,6"/>
+            </svg>
+          </div>
+          <h3>Your prospect list will appear here</h3>
+          <p>Fill in the form and click "Find Prospects" to build your outreach spreadsheet.</p>
+        </div>
+
+        <!-- Live table -->
+        <div id="table-panel" style="display:none;flex-direction:column;height:100%">
+          <div class="table-toolbar">
+            <h3 id="table-title">Prospects</h3>
+            <button class="filter-btn active" id="filter-all"       type="button" onclick="setFilter('all')">All</button>
+            <button class="filter-btn"         id="filter-investor"  type="button" onclick="setFilter('investor')">Investors</button>
+            <button class="filter-btn"         id="filter-customer"  type="button" onclick="setFilter('customer')">Customers</button>
+            <button class="filter-btn"         id="filter-interview" type="button" onclick="setFilter('interview')">Interviews</button>
+          </div>
+          <div class="prospects-table-wrap">
+            <table class="prospects-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Draft</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="prospects-body">
+                <tr id="empty-row">
+                  <td colspan="6">
+                    <div class="table-empty">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                      </svg>
+                      <span>Searching for prospects…</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
   </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBsPAga9Hd_71js7lKGlvASrY8b-toWa8M",
+      authDomain: "saasy-aa123.firebaseapp.com",
+      projectId: "saasy-aa123",
+      storageBucket: "saasy-aa123.firebasestorage.app",
+      messagingSenderId: "421734088338",
+      appId: "1:421734088338:web:fc2143d4c765fcad0ef04b"
+    };
+    initializeApp(firebaseConfig);
+    const auth = getAuth();
+
+    // ── Steps definition ────────────────────────────────────
+    const STEPS = [
+      { id: "analyze",    label: "Analyzing Business",   sub: "Gemini generating search strategy" },
+      { id: "investors",  label: "Finding Investors",     sub: "Exa.ai semantic search · 25%" },
+      { id: "customers",  label: "Finding Customers",     sub: "Exa.ai neural prospect search · 50%" },
+      { id: "lookalikes", label: "Finding Lookalikes",    sub: "Interview candidates from your CSV · 25%" },
+      { id: "drafting",   label: "Drafting Emails",       sub: "Gemini personalizing each message" },
+    ];
+
+    // ── State ───────────────────────────────────────────────
+    let gmailConnected  = false;
+    let gmailEmail      = "";
+    let csvData         = "";
+    let campaignId      = null;
+    let currentFilter   = "all";
+    let sentCount       = 0;
+    let allProspects    = [];
+    let currentToken    = "";
+    let openDrawerRowId = null;
+
+    const params        = new URLSearchParams(window.location.search);
+    const bid           = params.get("bid") || "";
+    let activeJobId     = null;
+    let activeWs        = null;
+
+    // DOM refs
+    const stateForm     = document.getElementById("state-form");
+    const statePipeline = document.getElementById("state-pipeline");
+    const stateDone     = document.getElementById("state-done");
+    const rightPreview  = document.getElementById("right-preview");
+    const tablePanel    = document.getElementById("table-panel");
+    const stepsEl       = document.getElementById("pipeline-steps");
+    const progressEl    = document.getElementById("pipeline-progress");
+    const pctEl         = document.getElementById("pipeline-pct");
+    const logBody       = document.getElementById("build-log-body");
+    const prospectsBody = document.getElementById("prospects-body");
+    const tableTitle    = document.getElementById("table-title");
+
+    // ── Auth ────────────────────────────────────────────────
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        currentToken = await user.getIdToken();
+        checkGmailStatus();
+        if (bid) {
+          checkFirestoreJob();
+        } else {
+          checkResumeJob();
+        }
+      }
+    });
+
+    // ── Check Firestore for status ──────────────────────────
+    import { doc, getDoc, collection, getDocs, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+
+    async function checkFirestoreJob() {
+      if (!bid || !auth.currentUser) return;
+      const uid = auth.currentUser.uid;
+      try {
+        const bizRef = doc(db, "users", uid, "businesses", bid);
+        const bizSnap = await getDoc(bizRef);
+        if (!bizSnap.exists()) return;
+        
+        const data = bizSnap.data();
+        const status = data.pipelineStatus;
+        campaignId = data.currentEmailCampaignId;
+
+        if (status === "emailing") {
+          activeJobId = campaignId || "reconnect-" + bid;
+          stateForm.style.display     = "none";
+          statePipeline.style.display = "flex";
+          stateDone.style.display     = "none";
+          rightPreview.style.display  = "none";
+          tablePanel.style.display    = "flex";
+          renderSteps(stepsEl);
+          document.getElementById("status-dot").className          = "build-status-dot build-status-dot--active";
+          document.getElementById("build-status-text").textContent = "Reconnecting…";
+          addLog("Reconnecting to autonomous pipeline…");
+          connectWs(activeJobId, 0, { bid: bid });
+          if (campaignId) listenForProspects(uid, campaignId);
+        } else if (status === "complete" && campaignId) {
+          loadCompletedCampaign(uid, campaignId);
+        }
+      } catch (err) {
+        console.error("Firestore status check failed:", err);
+      }
+    }
+
+    async function loadCompletedCampaign(uid, cid) {
+      campaignId = cid;
+      try {
+        const cRef = doc(db, "users", uid, "emailCampaigns", cid);
+        const cSnap = await getDoc(cRef);
+        if (cSnap.exists()) {
+          const cData = cSnap.data();
+          document.getElementById("stat-total").textContent  = cData.prospect_count || 0;
+          document.getElementById("stat-emails").textContent = "...";
+        }
+
+        const pRef = collection(db, "users", uid, "emailCampaigns", cid, "prospects");
+        const pSnap = await getDocs(pRef);
+        
+        allProspects = [];
+        prospectsBody.innerHTML = "";
+        pSnap.forEach(d => {
+          const p = d.data();
+          addProspectRow(p);
+        });
+
+        const emailsFound = allProspects.filter(x => x.email).length;
+        document.getElementById("stat-emails").textContent = emailsFound;
+
+        stateForm.style.display     = "none";
+        statePipeline.style.display = "none";
+        stateDone.style.display     = "flex";
+        rightPreview.style.display  = "none";
+        tablePanel.style.display    = "flex";
+        document.getElementById("status-dot").className          = "build-status-dot build-status-dot--done";
+        document.getElementById("build-status-text").textContent = "Complete";
+        renderSteps(document.getElementById("pipeline-steps-done"));
+        STEPS.forEach(s => setStep(s.id, "done", document.getElementById("pipeline-steps-done")));
+      } catch (err) {
+        console.error("Load campaign failed:", err);
+      }
+    }
+
+    function listenForProspects(uid, cid) {
+      const pRef = collection(db, "users", uid, "emailCampaigns", cid, "prospects");
+      onSnapshot(pRef, (snap) => {
+        snap.docChanges().forEach(change => {
+          if (change.type === "added") {
+            const p = change.doc.data();
+            if (!allProspects.find(x => x.id === p.id)) {
+              addProspectRow(p);
+            }
+          } else if (change.type === "modified") {
+            const p = change.doc.data();
+            const idx = allProspects.findIndex(x => x.id === p.id);
+            if (idx !== -1) {
+              allProspects[idx] = p;
+              updateTableUI();
+            }
+          }
+        });
+        const emailsFound = allProspects.filter(x => x.email).length;
+        document.getElementById("stat-emails").textContent = emailsFound;
+        document.getElementById("stat-total").textContent  = allProspects.length;
+      });
+    }
+
+    function updateTableUI() {
+      prospectsBody.innerHTML = "";
+      const visible = allProspects.filter(p => currentFilter === "all" || p.category === currentFilter);
+      if (!visible.length) {
+        prospectsBody.innerHTML = `<tr><td colspan="6"><div class="table-empty">No prospects found yet.</div></td></tr>`;
+      } else {
+        visible.forEach(insertRow);
+      }
+      updateTableTitle();
+    }
+
+    // ── Resume running job on page (re)load ─────────────────
+    async function checkResumeJob() {
+      let activeJobIdLegacy = sessionStorage.getItem("email_job_id");
+      if (!activeJobIdLegacy) return;
+      try {
+        const r = await fetch(`/api/email/pipeline/status?jid=${activeJobIdLegacy}`);
+        const d = await r.json();
+        if (d.status === "running") {
+          stateForm.style.display     = "none";
+          statePipeline.style.display = "flex";
+          stateDone.style.display     = "none";
+          rightPreview.style.display  = "none";
+          tablePanel.style.display    = "flex";
+          renderSteps(stepsEl);
+          document.getElementById("status-dot").className          = "build-status-dot build-status-dot--active";
+          document.getElementById("build-status-text").textContent = "Reconnecting…";
+          addLog("Reconnecting to running pipeline…");
+          connectWs(activeJobIdLegacy, 0, {});
+        } else {
+          sessionStorage.removeItem("email_job_id");
+        }
+      } catch {
+        sessionStorage.removeItem("email_job_id");
+      }
+    }
+
+    async function checkGmailStatus() {
+      try {
+        const r = await fetch("/api/gmail/status");
+        const d = await r.json();
+        gmailConnected = d.configured;
+        const statusEl = document.getElementById("gmail-status");
+        const dotEl    = document.getElementById("gmail-dot");
+        const lblEl    = document.getElementById("gmail-label");
+        if (d.configured) {
+          statusEl.className = "gmail-status configured";
+          dotEl.className    = "gmail-dot configured";
+          lblEl.textContent  = `Sending from ${d.email}`;
+        } else {
+          statusEl.className = "gmail-status not-configured";
+          dotEl.className    = "gmail-dot not-configured";
+          lblEl.textContent  = "Set GMAIL_SENDER + GMAIL_APP_PASSWORD in .env to enable sending";
+        }
+      } catch {}
+    }
+
+    // ── CSV upload ──────────────────────────────────────────
+    document.getElementById("csv-input").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) { csvData = ""; return; }
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const bytes  = new Uint8Array(ev.target.result);
+        let binary   = "";
+        for (const b of bytes) binary += String.fromCharCode(b);
+        csvData = btoa(binary);
+        document.getElementById("csv-label").classList.add("has-file");
+        document.getElementById("csv-label-text").textContent = file.name;
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    // ── Step renderer ────────────────────────────────────────
+    function renderSteps(container) {
+      container.innerHTML = "";
+      STEPS.forEach((step, i) => {
+        const el = document.createElement("div");
+        el.className = "pipeline-step pipeline-step--pending";
+        el.id        = `step-${step.id}`;
+        el.innerHTML = `
+          <div class="step-indicator">
+            <div class="step-dot">
+              <svg class="step-check" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              <span class="step-num">${i + 1}</span>
+            </div>
+            ${i < STEPS.length - 1 ? '<div class="step-connector"></div>' : ''}
+          </div>
+          <div class="step-body">
+            <span class="step-label">${step.label}</span>
+            <span class="step-sub">${step.sub}</span>
+          </div>
+          <div class="step-status-badge step-badge--pending">Pending</div>`;
+        container.appendChild(el);
+      });
+    }
+
+    // ── Helpers ─────────────────────────────────────────────
+    function esc(s) {
+      return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+    function addLog(text, level = "info") {
+      const entry = document.createElement("div");
+      const ts    = new Date().toLocaleTimeString("en-US", { hour12:false, hour:"2-digit", minute:"2-digit", second:"2-digit" });
+      entry.className = `log-entry log-entry--${level}`;
+      entry.innerHTML = `<span class="log-ts">${ts}</span><span class="log-text">${esc(text)}</span>`;
+      logBody.appendChild(entry);
+      logBody.scrollTop = logBody.scrollHeight;
+    }
+    function setStep(id, state) {
+      const el = document.getElementById(`step-${id}`);
+      if (!el) return;
+      el.className = `pipeline-step pipeline-step--${state}`;
+      const badge = el.querySelector(".step-status-badge");
+      if (badge) {
+        badge.className   = `step-status-badge step-badge--${state}`;
+        badge.textContent = state === "active" ? "Running" : state === "done" ? "Done" : state === "error" ? "Error" : "Pending";
+      }
+    }
+    function setProgress(pct) {
+      progressEl.style.width = `${pct}%`;
+      pctEl.textContent      = `${Math.round(pct)}%`;
+    }
+    function updateTableTitle() {
+      const n = allProspects.filter(p => currentFilter === "all" || p.category === currentFilter).length;
+      tableTitle.textContent = `${n} Prospect${n !== 1 ? "s" : ""}${currentFilter !== "all" ? ` · ${currentFilter}` : ""}`;
+    }
+
+    // ── Add prospect row ─────────────────────────────────────
+    function addProspectRow(p) {
+      allProspects.push(p);
+      document.getElementById("empty-row")?.remove();
+      if (currentFilter === "all" || p.category === currentFilter) insertRow(p);
+      updateTableTitle();
+    }
+
+    function insertRow(p) {
+      const emailHtml = p.email
+        ? `<span class="email-status ready"><span class="e-dot ready"></span>${esc(p.email)}</span>`
+        : `<span class="email-status needed"><span class="e-dot needed"></span>Email needed</span>`;
+
+      const tr = document.createElement("tr");
+      tr.id               = `row-${p.id}`;
+      tr.dataset.category = p.category;
+      tr.innerHTML = `
+        <td><span class="cat-badge ${p.category}">${esc(p.category)}</span></td>
+        <td>
+          <div class="name-cell">${p.url
+            ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name)}</a>`
+            : esc(p.name)}</div>
+          <div class="title-cell">${esc([p.title, p.company].filter(Boolean).join(" · "))}</div>
+        </td>
+        <td>${emailHtml}</td>
+        <td><div class="draft-preview" title="${esc(p.draft_subject)}">${esc(p.draft_subject || "—")}</div></td>
+        <td id="status-${p.id}">
+          <span class="email-status ${p.sent ? 'sent' : 'ready'}">
+            <span class="e-dot ${p.sent ? 'sent' : 'ready'}"></span>
+            ${p.sent ? 'Sent' : 'Pending'}
+          </span>
+        </td>
+        <td>
+          <button class="send-row-btn ${p.sent ? 'sent-btn' : ''}"
+                  id="btn-${p.id}"
+                  type="button"
+                  ${p.sent ? 'disabled' : `onclick="toggleDrawer('${p.id}')"`}>
+            ${p.sent ? 'Sent' : 'Edit &amp; Send'}
+          </button>
+        </td>`;
+      prospectsBody.appendChild(tr);
+    }
+
+    // ── Drawer ───────────────────────────────────────────────
+    window.toggleDrawer = function(id) {
+      const p = allProspects.find(x => x.id === id);
+      if (!p) return;
+      if (openDrawerRowId) {
+        document.getElementById(`drawer-${openDrawerRowId}`)?.remove();
+        if (openDrawerRowId === id) { openDrawerRowId = null; return; }
+      }
+      const emailNote = !p.email
+        ? `<div class="drawer-email-note">No email found — enter one manually below.</div>` : "";
+      const drawerTr = document.createElement("tr");
+      drawerTr.id        = `drawer-${id}`;
+      drawerTr.className = "drawer-row";
+      drawerTr.innerHTML = `<td colspan="6">
+        <div class="drawer-inner">
+          ${emailNote}
+          <div><label>To</label><input type="email" id="d-to-${id}" value="${esc(p.email)}" placeholder="recipient@example.com" /></div>
+          <div><label>Subject</label><input type="text" id="d-sub-${id}" value="${esc(p.draft_subject)}" /></div>
+          <div><label>Body</label><textarea id="d-body-${id}">${esc(p.draft_body)}</textarea></div>
+          <div class="drawer-actions">
+            <button class="drawer-send-btn" id="dsend-${id}" type="button" onclick="sendOne('${id}')">Send Email</button>
+            <button class="drawer-cancel-btn" type="button" onclick="toggleDrawer('${id}')">Cancel</button>
+          </div>
+        </div>
+      </td>`;
+      document.getElementById(`row-${id}`)?.insertAdjacentElement("afterend", drawerTr);
+      openDrawerRowId = id;
+    };
+
+    // ── Send one ─────────────────────────────────────────────
+    window.sendOne = async function(id) {
+      if (!gmailConnected) { alert("Gmail not configured — set GMAIL_SENDER and GMAIL_APP_PASSWORD in .env and restart the server."); return; }
+      const to      = document.getElementById(`d-to-${id}`)?.value?.trim();
+      const subject = document.getElementById(`d-sub-${id}`)?.value?.trim();
+      const body    = document.getElementById(`d-body-${id}`)?.value?.trim();
+      if (!to) { alert("Enter a recipient email address."); return; }
+
+      const btn = document.getElementById(`dsend-${id}`);
+      if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
+
+      try {
+        const r = await fetch("/api/email/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${currentToken}` },
+          body: JSON.stringify({ to, subject, body, campaign_id: campaignId, prospect_id: id }),
+        });
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+
+        const p = allProspects.find(x => x.id === id);
+        if (p) { p.sent = true; p.email = to; p.draft_subject = subject; p.draft_body = body; }
+        sentCount++;
+        document.getElementById("stat-sent").textContent = sentCount;
+
+        const statusEl = document.getElementById(`status-${id}`);
+        if (statusEl) statusEl.innerHTML = `<span class="email-status sent"><span class="e-dot sent"></span>Sent</span>`;
+        const rowBtn = document.getElementById(`btn-${id}`);
+        if (rowBtn) { rowBtn.textContent = "Sent"; rowBtn.className = "send-row-btn sent-btn"; rowBtn.disabled = true; rowBtn.onclick = null; }
+
+        document.getElementById(`drawer-${id}`)?.remove();
+        openDrawerRowId = null;
+      } catch (err) {
+        alert("Send failed: " + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = "Send Email"; }
+      }
+    };
+
+    // ── Send all ─────────────────────────────────────────────
+    window.sendAllReady = async function() {
+      if (!gmailConnected) { alert("Gmail not configured — set GMAIL_SENDER and GMAIL_APP_PASSWORD in .env and restart the server."); return; }
+      const ready = allProspects.filter(p => !p.sent && p.email);
+      if (!ready.length) { alert("No prospects with email addresses to send to."); return; }
+      if (!confirm(`Send ${ready.length} emails now?`)) return;
+
+      const btn = document.getElementById("send-all-btn");
+      btn.disabled = true;
+
+      for (let i = 0; i < ready.length; i++) {
+        btn.textContent = `Sending ${i + 1} / ${ready.length}…`;
+        const p = ready[i];
+        try {
+          const r = await fetch("/api/email/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${currentToken}` },
+            body: JSON.stringify({ to: p.email, subject: p.draft_subject, body: p.draft_body,
+                                   campaign_id: campaignId, prospect_id: p.id }),
+          });
+          const d = await r.json();
+          if (!d.error) {
+            p.sent = true;
+            sentCount++;
+            document.getElementById("stat-sent").textContent = sentCount;
+            const statusEl = document.getElementById(`status-${p.id}`);
+            if (statusEl) statusEl.innerHTML = `<span class="email-status sent"><span class="e-dot sent"></span>Sent</span>`;
+            const rowBtn = document.getElementById(`btn-${p.id}`);
+            if (rowBtn) { rowBtn.textContent = "Sent"; rowBtn.className = "send-row-btn sent-btn"; rowBtn.disabled = true; rowBtn.onclick = null; }
+          }
+        } catch {}
+        await new Promise(res => setTimeout(res, 300));
+      }
+      btn.disabled    = false;
+      btn.textContent = "Send All Ready";
+    };
+
+    // ── Filter ───────────────────────────────────────────────
+    window.setFilter = function(f) {
+      currentFilter = f;
+      ["all","investor","customer","interview"].forEach(id => {
+        document.getElementById(`filter-${id}`)?.classList.toggle("active", id === f);
+      });
+      prospectsBody.innerHTML = "";
+      const visible = allProspects.filter(p => f === "all" || p.category === f);
+      if (!visible.length) {
+        prospectsBody.innerHTML = `<tr><td colspan="6"><div class="table-empty">No prospects in this category yet.</div></td></tr>`;
+      } else {
+        visible.forEach(insertRow);
+      }
+      updateTableTitle();
+    };
+
+    // ── Download CSV ─────────────────────────────────────────
+    window.downloadCSV = async function() {
+      if (!campaignId) return;
+      const r    = await fetch(`/api/email/campaign/${campaignId}/csv`, {
+        headers: { "Authorization": `Bearer ${currentToken}` }
+      });
+      const blob = await r.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `campaign_${campaignId.slice(0,8)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    // ── Reset ────────────────────────────────────────────────
+    window.resetForm = function() {
+      allProspects = []; campaignId = null; sentCount = 0;
+      openDrawerRowId = null;
+      activeJobId = null;
+      if (activeWs) { try { activeWs.close(); } catch {} activeWs = null; }
+      prospectsBody.innerHTML = `<tr id="empty-row"><td colspan="6"><div class="table-empty">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg><span>Searching for prospects…</span></div></td></tr>`;
+      stateForm.style.display     = "flex";
+      statePipeline.style.display = "none";
+      stateDone.style.display     = "none";
+      rightPreview.style.display  = "flex";
+      tablePanel.style.display    = "none";
+      document.getElementById("status-dot").className   = "build-status-dot";
+      document.getElementById("build-status-text").textContent = "Ready";
+    };
+
+    // ── WebSocket connect (shared by start + reconnect) ──────
+    function connectWs(jobId, eventOffset, payload) {
+      if (activeWs) { try { activeWs.close(); } catch {} }
+      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(`${protocol}//${location.host}/api/ws/marketing/email`);
+      activeWs = ws;
+
+      ws.onopen = () => {
+        document.getElementById("build-status-text").textContent = "In progress";
+        ws.send(JSON.stringify({
+          token:        currentToken,
+          job_id:       jobId,
+          event_offset: eventOffset,
+          ...payload,
+        }));
+      };
+      ws.onmessage = (ev) => {
+        let e;
+        try { e = JSON.parse(ev.data); } catch { return; }
+        handleEvent(e, ws);
+      };
+      ws.onerror = () => {
+        addLog("WebSocket error.", "error");
+        document.getElementById("status-dot").className          = "build-status-dot build-status-dot--error";
+        document.getElementById("build-status-text").textContent = "Error";
+      };
+      ws.onclose = () => {
+        const statusText = document.getElementById("build-status-text").textContent;
+        if (statusText !== "Complete") {
+          // Pipeline may still be running server-side — show reconnect hint
+          document.getElementById("status-dot").className          = "build-status-dot build-status-dot--error";
+          document.getElementById("build-status-text").textContent = "Disconnected";
+          addLog("Connection lost — pipeline may still be running. Reload to reconnect.", "warn");
+        }
+      };
+    }
+
+    // ── Start pipeline ───────────────────────────────────────
+    window.startPipeline = async function() {
+      const business = document.getElementById("f-business").value.trim();
+      const customer = document.getElementById("f-customer").value.trim();
+      if (!business || !customer) {
+        alert("Please fill in business description and target customer.");
+        return;
+      }
+
+      // Generate stable job ID for this run
+      const jobId = crypto.randomUUID();
+      activeJobId = jobId;
+
+      // Transition to running state
+      stateForm.style.display     = "none";
+      statePipeline.style.display = "flex";
+      stateDone.style.display     = "none";
+      rightPreview.style.display  = "none";
+      tablePanel.style.display    = "flex";
+      renderSteps(stepsEl);
+
+      document.getElementById("status-dot").className          = "build-status-dot build-status-dot--active";
+      document.getElementById("build-status-text").textContent = "In progress";
+      addLog("Connecting to email pipeline…");
+
+      connectWs(jobId, 0, {
+        bid:                  bid,
+        business_description: business,
+        target_customer:      customer,
+        calendar_link:        document.getElementById("f-cal").value.trim(),
+        prospect_count:       parseInt(document.getElementById("f-count").value) || 40,
+        csv_data:             csvData,
+      });
+
+      // We don't have campaignId yet, but connectWs/handleEvent will soon.
+      // Or we can poll Firestore for the campaignId on the business doc.
+      const pollCampaign = setInterval(async () => {
+        if (!bid || !auth.currentUser) { clearInterval(pollCampaign); return; }
+        const bRef = doc(db, "users", auth.currentUser.uid, "businesses", bid);
+        const snap = await getDoc(bRef);
+        if (snap.exists() && snap.data().currentEmailCampaignId) {
+          const cid = snap.data().currentEmailCampaignId;
+          campaignId = cid;
+          listenForProspects(auth.currentUser.uid, cid);
+          clearInterval(pollCampaign);
+        }
+      }, 2000);
+    };
+
+    // ── Event handler ────────────────────────────────────────
+    function handleEvent(ev, ws) {
+      switch (ev.type) {
+        case "step_start":
+          setStep(ev.step, "active");
+          setProgress(ev.progress || 0);
+          addLog(`Started: ${ev.label}`);
+          break;
+        case "step_done":
+          setStep(ev.step, "done");
+          addLog(`Done: ${ev.label}`, "success");
+          break;
+        case "log":
+          addLog(ev.text, ev.level || "info");
+          break;
+        case "prospect_found":
+          if (ev.prospect) addProspectRow(ev.prospect);
+          break;
+        case "done":
+          campaignId = ev.campaign_id;
+          setProgress(100);
+          activeJobId = null;
+          document.getElementById("status-dot").className          = "build-status-dot build-status-dot--done";
+          document.getElementById("build-status-text").textContent = "Complete";
+          addLog(`Campaign complete — ${ev.total} prospects, ${ev.emails_found} emails found.`, "success");
+          document.getElementById("stat-total").textContent  = ev.total ?? 0;
+          document.getElementById("stat-emails").textContent = ev.emails_found ?? 0;
+          document.getElementById("stat-sent").textContent   = sentCount;
+          statePipeline.style.display = "none";
+          stateDone.style.display     = "flex";
+          // Copy finalized steps into done panel
+          document.getElementById("pipeline-steps-done").innerHTML = stepsEl.innerHTML;
+          break;
+        case "ws_done":
+          if (ws) ws.close();
+          break;
+      }
+    }
+  </script>
 
 </body>
 </html>
