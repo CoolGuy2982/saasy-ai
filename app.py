@@ -830,26 +830,25 @@ def _design_with_stitch(genai_client, prd_text: str, app_name: str, send, recv_q
     tool_gen     = find_tool(["generate_screen_from_text", "generateScreen", "stitch_generate_screen"])
 
     # Step 1: Create project (title = correct arg per schema)
-    send("log", text="  Stitch: creating project…")
+    send("log", text="  Stitch: creating new project…")
     try:
         proj = _stitch_call(tool_create, {"title": app_name}, STITCH_API_KEY)
-        send("log", text=f"  Stitch raw: {str(proj.get('_raw', proj))[:400]}")
         # Response may be resource name "projects/12345" or a numeric projectId
         resource_name = _stitch_extract_id(proj, "name", "projectId", "project_id", "id")
-        # Extract numeric/slug portion from "projects/{id}" resource name
         if resource_name and "/" in resource_name:
             project_id = resource_name.split("/")[-1]
         else:
             project_id = resource_name
         if not project_id:
-            send("log", text="  Stitch: could not find projectId in response — skipping.", level="warn")
+            send("log", text="  Stitch: could not find projectId in response.", level="warn")
             return []
-        send("log", text=f"  Stitch: project → {project_id}")
+        send("log", text=f"  Stitch: project created (ID: {project_id})")
     except Exception as e:
         send("log", text=f"  Stitch create_project failed: {e}", level="error")
         return []
 
-    # Step 2: Decide screen prompts (Gemini text generation, no function calling)
+    # Step 2: Decide screen prompts
+    send("log", text="  Stitch: planning screen layouts with Gemini…")
     screen_specs = [
         ("Landing Page",
          f"Modern SaaS landing page for '{app_name}'. Hero headline, key feature cards, "
@@ -938,7 +937,7 @@ def _design_with_stitch(genai_client, prd_text: str, app_name: str, send, recv_q
     for idx, (screen_name, prompt) in enumerate(screen_specs):
         # Check for skip before starting
         if _check_skip():
-            send("log", text="  Stitch: skipped by user.", level="warn")
+            send("log", text="  Stitch: generation skipped by user.", level="warn")
             return screens
 
         send("design_generating", name=screen_name, index=idx, total=total_screens)
@@ -949,6 +948,7 @@ def _design_with_stitch(genai_client, prd_text: str, app_name: str, send, recv_q
             _gen_error:  list = [None]
             def _do_gen(r=_gen_result, e=_gen_error, p=prompt):
                 try:
+                    # Stitch generateScreen is the most time-consuming call (1-3 min)
                     r[0] = _stitch_call(tool_gen, {
                         "projectId": project_id,
                         "prompt": p,
@@ -971,7 +971,7 @@ def _design_with_stitch(genai_client, prd_text: str, app_name: str, send, recv_q
 
             # If no direct screenshot URL, fall back to list_screens → get_screen
             if not shot_url and not screen_resource:
-                send("log", text=f"  Stitch: no screen in generate response — trying list_screens…")
+                send("log", text=f"  Stitch: screen not found in generate response, polling list_screens…")
                 try:
                     listed = _stitch_call(tool_list_scr, {"projectId": project_id}, STITCH_API_KEY)
                     scr_list = listed.get("screens", listed.get("items", []))
@@ -985,8 +985,8 @@ def _design_with_stitch(genai_client, prd_text: str, app_name: str, send, recv_q
 
             # Fetch full screen object via get_screen if we have a resource name
             if screen_resource and (not shot_url):
+                send("log", text=f"  Stitch: fetching full screen metadata ({screen_resource.split('/')[-1]})…")
                 parts = screen_resource.split("/")
-                # name format: projects/{p}/screens/{s}
                 scr_id = parts[-1] if len(parts) >= 2 else ""
                 try:
                     got = _stitch_call(tool_get, {
@@ -1000,15 +1000,15 @@ def _design_with_stitch(genai_client, prd_text: str, app_name: str, send, recv_q
                     send("log", text=f"  Stitch: get_screen failed: {ge}", level="warn")
 
             if not shot_url:
-                send("log", text=f"  Stitch: no screenshot URL for '{screen_name}'.", level="warn")
+                send("log", text=f"  Stitch: no screenshot available for '{screen_name}'.", level="warn")
                 continue
 
             # Download screenshot
-            send("log", text=f"  Stitch: downloading '{screen_name}' screenshot…")
+            send("log", text=f"  Stitch: downloading preview for '{screen_name}'…")
             try:
                 shot_b64 = _download_b64(shot_url)
             except Exception as dl_err:
-                send("log", text=f"  Stitch: screenshot download failed: {dl_err}", level="error")
+                send("log", text=f"  Stitch: download failed: {dl_err}", level="error")
                 continue
 
             # Download HTML (best-effort)
@@ -1023,11 +1023,11 @@ def _design_with_stitch(genai_client, prd_text: str, app_name: str, send, recv_q
             if screen_resource:
                 known_screen_ids.add(screen_resource)
             screens.append({"name": screen_name, "html": screen_html, "screenshot": shot_b64})
-            send("log", text=f"  Stitch: '{screen_name}' ready")
+            send("log", text=f"  Stitch: '{screen_name}' ready.", level="success")
             send("design_screen", name=screen_name, data=shot_b64, html=screen_html)
 
         except Exception as e:
-            send("log", text=f"  Stitch generate_screen failed: {e}", level="error")
+            send("log", text=f"  Stitch failed for '{screen_name}': {e}", level="error")
 
     return screens
 
@@ -1778,7 +1778,25 @@ async def build_websocket(websocket: WebSocket):
 
 # ── Marketing Reels Pipeline ───────────────────────────────────────────────
 
-def _run_reels_pipeline(send, recv_q, target_url: str, uid: str | None = None, bid: str | None = None):
+def _fs_log_reels_event(uid: str, bid: str, event: dict):
+    """Persist a reels marketing event to Firestore under the business."""
+    if not fs or not uid or not bid:
+        return
+    try:
+        ref = (fs.collection("users").document(uid)
+                 .collection("businesses").document(bid)
+                 .collection("reels_logs"))
+        ref.add({**event, "timestamp": fb_fs.SERVER_TIMESTAMP})
+    except Exception as e:
+        print(f"Failed logging reels event: {e}")
+
+def _run_reels_pipeline(send_orig, recv_q, target_url: str, uid: str | None = None, bid: str | None = None):
+    # Wrap send to also persist to Firestore logs
+    def send(evt_type, **kwargs):
+        send_orig(evt_type, **kwargs)
+        if uid and bid:
+            _fs_log_reels_event(uid, bid, {"type": evt_type, **kwargs})
+
     """
     1. Spin up a Steel browser pointing to target_url.
     2. Take screenshots.
@@ -2147,17 +2165,17 @@ def _fs_save_campaign(uid: str, campaign_id: str, meta: dict):
         print(f"Failed saving campaign: {e}")
 
 
-def _fs_save_prospect(uid: str, campaign_id: str, prospect: dict):
-    if not fs or not uid:
+def _fs_log_email_event(uid: str, campaign_id: str, event: dict):
+    """Persist a marketing email event to Firestore."""
+    if not fs or not uid or not campaign_id:
         return
     try:
-        pid = prospect.get("id") or str(_uuid_mod.uuid4())
-        (fs.collection("users").document(uid)
-           .collection("emailCampaigns").document(campaign_id)
-           .collection("prospects").document(pid)
-           .set(prospect, merge=True))
+        ref = (fs.collection("users").document(uid)
+                 .collection("emailCampaigns").document(campaign_id)
+                 .collection("logs"))
+        ref.add({**event, "timestamp": fb_fs.SERVER_TIMESTAMP})
     except Exception as e:
-        print(f"Failed saving prospect: {e}")
+        print(f"Failed logging email event: {e}")
 
 
 # ── Exa helpers ─────────────────────────────────────────────
@@ -2220,7 +2238,16 @@ def _exa_to_prospects(results, category: str) -> list[dict]:
 
 # ── Email pipeline ──────────────────────────────────────────
 
-def _run_email_pipeline(send, recv_q, payload: dict, uid: str | None, bid: str | None = None):
+def _run_email_pipeline(send_orig, recv_q, payload: dict, uid: str | None, bid: str | None = None):
+    # Wrap send to also persist to Firestore logs
+    campaign_id = None # will be set shortly
+
+    def send(evt_type, **kwargs):
+        nonlocal campaign_id
+        send_orig(evt_type, **kwargs)
+        if uid and campaign_id:
+            _fs_log_email_event(uid, campaign_id, {"type": evt_type, **kwargs})
+
     business_desc   = payload.get("business_description", "")
     target_customer = payload.get("target_customer", "")
     cal_link        = payload.get("calendar_link", "")
@@ -2230,7 +2257,7 @@ def _run_email_pipeline(send, recv_q, payload: dict, uid: str | None, bid: str |
     n_investors  = max(1, round(n_prospects * 0.25))
     n_customers  = max(1, round(n_prospects * 0.50))
     n_lookalikes = max(1, n_prospects - n_investors - n_customers)
-    campaign_id  = str(_uuid_mod.uuid4())
+    campaign_id  = str(_uuid_mod.uuid4()) # Set the nonlocal variable
 
     # Persist campaign link to business immediately if we have a bid
     if uid and bid:

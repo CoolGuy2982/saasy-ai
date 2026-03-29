@@ -220,7 +220,7 @@
     const bid = params.get("bid") || "";
 
     // ── Firestore status check ─────────────────────────────
-    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, collection, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
     const db = getFirestore();
 
     async function checkFirestoreJob() {
@@ -241,10 +241,12 @@
              setProgress(100);
              addLog("Reels loaded from storage.", "success");
              showReelsCarousel(data.marketingReelUrls);
+             listenForLogs(uid, bid);
              return;
           }
           if (data.pipelineStatus === "reels") {
             addLog("Autonomous reels pipeline is currently running…");
+            listenForLogs(uid, bid);
             // Connect to stream it live
             startBuild();
             return;
@@ -252,6 +254,30 @@
         }
       } catch (err) { console.error(err); }
       startBuild();
+    }
+
+    function listenForLogs(uid, bid) {
+      const logRef = collection(db, "users", uid, "businesses", bid, "reels_logs");
+      const q = query(logRef, orderBy("timestamp", "asc"));
+      onSnapshot(q, (snap) => {
+        snap.docChanges().forEach(change => {
+          if (change.type === "added") {
+            const data = change.doc.data();
+            if (data.type === "log") {
+              addLog(data.text, data.level);
+            } else if (data.type === "step_start") {
+              setStep(data.step, "active");
+              setProgress(data.progress || 0);
+            } else if (data.type === "step_done") {
+              setStep(data.step, "done");
+            } else if (data.type === "screenshot") {
+              browserPlaceholder.style.display = "none";
+              browserScreenshot.style.display = "block";
+              browserScreenshot.src = `data:image/png;base64,${data.data}`;
+            }
+          }
+        });
+      });
     }
 
     // Render steps
@@ -279,7 +305,12 @@
     });
 
     // ── Log helper ─────────────────────────────────────────
+    const seenLogs = new Set();
     function addLog(text, level = "info") {
+      const logId = `${text}-${level}`;
+      if (seenLogs.has(logId)) return;
+      seenLogs.add(logId);
+
       const entry = document.createElement("div");
       
       const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });

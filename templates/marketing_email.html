@@ -750,7 +750,10 @@
           document.getElementById("build-status-text").textContent = "Reconnecting…";
           addLog("Reconnecting to autonomous pipeline…");
           connectWs(activeJobId, 0, { bid: bid });
-          if (campaignId) listenForProspects(uid, campaignId);
+          if (campaignId) {
+            listenForProspects(uid, campaignId);
+            listenForLogs(uid, campaignId);
+          }
         } else if (status === "complete" && campaignId) {
           loadCompletedCampaign(uid, campaignId);
         }
@@ -759,8 +762,30 @@
       }
     }
 
+    function listenForLogs(uid, cid) {
+      const logRef = collection(db, "users", uid, "emailCampaigns", cid, "logs");
+      const q = query(logRef, orderBy("timestamp", "asc"));
+      onSnapshot(q, (snap) => {
+        snap.docChanges().forEach(change => {
+          if (change.type === "added") {
+            const data = change.doc.data();
+            if (data.type === "log") {
+              // Deduplicate logs if WS already showed them
+              addLog(data.text, data.level);
+            } else if (data.type === "step_start") {
+              setStep(data.step, "active");
+              setProgress(data.progress || 0);
+            } else if (data.type === "step_done") {
+              setStep(data.step, "done");
+            }
+          }
+        });
+      });
+    }
+
     async function loadCompletedCampaign(uid, cid) {
       campaignId = cid;
+      listenForLogs(uid, cid); // Show historical logs too
       try {
         const cRef = doc(db, "users", uid, "emailCampaigns", cid);
         const cSnap = await getDoc(cRef);
@@ -921,10 +946,15 @@
     }
 
     // ── Helpers ─────────────────────────────────────────────
+    const seenLogs = new Set();
     function esc(s) {
       return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     }
     function addLog(text, level = "info") {
+      const logId = `${text}-${level}`;
+      if (seenLogs.has(logId)) return;
+      seenLogs.add(logId);
+
       const entry = document.createElement("div");
       const ts    = new Date().toLocaleTimeString("en-US", { hour12:false, hour:"2-digit", minute:"2-digit", second:"2-digit" });
       entry.className = `log-entry log-entry--${level}`;
