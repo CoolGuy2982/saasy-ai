@@ -245,37 +245,37 @@ Rules: Every sentence must be specific. No vague filler. No sections you don't h
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "step": 0})
+    return templates.TemplateResponse(request, "index.html", context={"step": 0})
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request, "step": 0})
+    return templates.TemplateResponse(request, "dashboard.html", context={"step": 0})
 
 
 @app.get("/new", response_class=HTMLResponse)
 async def new_business(request: Request):
-    return templates.TemplateResponse("new.html", {"request": request, "step": 1})
+    return templates.TemplateResponse(request, "new.html", context={"step": 1})
 
 
 @app.get("/build", response_class=HTMLResponse)
 async def build_page(request: Request):
-    return templates.TemplateResponse("build.html", {"request": request, "step": 2})
+    return templates.TemplateResponse(request, "build.html", context={"step": 2})
 
 
 @app.get("/marketing", response_class=HTMLResponse)
 async def marketing_page(request: Request):
-    return templates.TemplateResponse("marketing.html", {"request": request, "step": 3})
+    return templates.TemplateResponse(request, "marketing.html", context={"step": 3})
 
 
 @app.get("/marketing/reels", response_class=HTMLResponse)
 async def marketing_reels_page(request: Request):
-    return templates.TemplateResponse("marketing_reels.html", {"request": request, "step": 3})
+    return templates.TemplateResponse(request, "marketing_reels.html", context={"step": 3})
 
 
 @app.get("/marketing/email", response_class=HTMLResponse)
 async def marketing_email_page(request: Request):
-    return templates.TemplateResponse("marketing_email.html", {"request": request, "step": 4})
+    return templates.TemplateResponse(request, "marketing_email.html", context={"step": 4})
 
 
 @app.post("/api/session")
