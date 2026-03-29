@@ -2109,6 +2109,38 @@ async def marketing_reels_websocket(websocket: WebSocket):
             send("log", text=f"Pipeline error: {e}\n{error_msg}", level="error")
         finally:
             send("ws_done")
+        # After reels finish, kick off email pipeline in background
+        if uid and bid:
+            def _silent_send(evt_type, **kwargs):
+                if evt_type in ("step_start", "step_done", "done"):
+                    print(f"[reels_ws→email] {evt_type}: {kwargs.get('label') or kwargs.get('step') or ''}")
+            def _run_email_bg():
+                import sys as _sys, asyncio as _asyncio
+                if _sys.platform == "win32":
+                    _asyncio.set_event_loop_policy(_asyncio.WindowsProactorEventLoopPolicy())
+                    _asyncio.set_event_loop(_asyncio.ProactorEventLoop())
+                _fs_save_pipeline_status(uid, bid, "emailing")
+                try:
+                    prd_text = ""
+                    if fs_db:
+                        try:
+                            biz_doc = fs_db.collection("users").document(uid).collection("businesses").document(bid).get()
+                            if biz_doc.exists:
+                                prd_text = biz_doc.to_dict().get("prd", "")
+                        except Exception:
+                            pass
+                    payload = {
+                        "business_description": prd_text[:500] if prd_text else f"App at {target_url}",
+                        "target_customer": "",
+                        "calendar_link": "",
+                        "prospect_count": 20,
+                    }
+                    _run_email_pipeline(_silent_send, queue.Queue(), payload, uid, bid)
+                    print("[reels_ws→email] Email outreach done.")
+                except Exception as e:
+                    print(f"[reels_ws→email] Email error: {e}")
+                _fs_save_pipeline_status(uid, bid, "complete")
+            threading.Thread(target=_run_email_bg, daemon=True).start()
 
     thread = threading.Thread(target=run, daemon=True)
     thread.start()
@@ -2145,24 +2177,27 @@ EXA_API_KEY        = os.environ.get("EXA_API_KEY", "")
 GMAIL_SENDER       = os.environ.get("GMAIL_SENDER", "")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 
-# ── SMTP send helper ────────────────────────────────────────
+# ── Gmail draft helper (IMAP append — no OAuth needed) ──────
 
-def _smtp_send(to_addr: str, subject: str, body: str) -> str | None:
-    """Send via Gmail SMTP. Returns None on success, error string on failure."""
+def _gmail_save_draft(to_addr: str, subject: str, body: str) -> str | None:
+    """Save a draft to Gmail via IMAP. Returns None on success, error string on failure."""
     if not GMAIL_SENDER or not GMAIL_APP_PASSWORD:
         return "GMAIL_SENDER or GMAIL_APP_PASSWORD not set in .env"
-    import smtplib
+    import imaplib
     import email.mime.text
     import email.mime.multipart
+    import time
     try:
         msg = email.mime.multipart.MIMEMultipart()
         msg["From"]    = GMAIL_SENDER
         msg["To"]      = to_addr
         msg["Subject"] = subject
+        msg["Date"]    = email.utils.formatdate()
         msg.attach(email.mime.text.MIMEText(body, "plain"))
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-            smtp.login(GMAIL_SENDER, GMAIL_APP_PASSWORD)
-            smtp.sendmail(GMAIL_SENDER, to_addr, msg.as_string())
+        raw = msg.as_bytes()
+        with imaplib.IMAP4_SSL("imap.gmail.com") as imap:
+            imap.login(GMAIL_SENDER, GMAIL_APP_PASSWORD)
+            imap.append("[Gmail]/Drafts", "\\Draft", imaplib.Time2Internaldate(time.time()), raw)
         return None
     except Exception as e:
         return str(e)
@@ -2177,6 +2212,19 @@ def _fs_save_campaign(uid: str, campaign_id: str, meta: dict):
            .set({**meta, "created_at": fb_fs.SERVER_TIMESTAMP}, merge=True))
     except Exception as e:
         print(f"Failed saving campaign: {e}")
+
+
+def _fs_save_prospect(uid: str, campaign_id: str, prospect: dict):
+    if not fs or not uid or not campaign_id:
+        return
+    try:
+        pid = prospect.get("id") or _uuid_mod.uuid4().hex
+        (fs.collection("users").document(uid)
+           .collection("emailCampaigns").document(campaign_id)
+           .collection("prospects").document(pid)
+           .set({**prospect, "id": pid}, merge=True))
+    except Exception as e:
+        print(f"Failed saving prospect: {e}")
 
 
 def _fs_log_email_event(uid: str, campaign_id: str, event: dict):
@@ -2345,6 +2393,8 @@ lookalike_queries: fallback queries (used when no customer CSV is provided) to f
     all_prospects: list[dict] = []
 
     def _exa_search(query: str, category: str, count: int):
+        if not query or not query.strip():
+            return []
         try:
             res = exa.search_and_contents(
                 query,
@@ -2362,6 +2412,7 @@ lookalike_queries: fallback queries (used when no customer CSV is provided) to f
     # ── Step 2: Investors ───────────────────────────────────
     send("step_start", step="investors", label="Finding Investors", progress=20)
     for q in analysis.get("investor_queries", [])[:2]:
+        if not q or not q.strip(): continue
         needed = n_investors - sum(1 for p in all_prospects if p["category"] == "investor")
         if needed <= 0:
             break
@@ -2375,6 +2426,7 @@ lookalike_queries: fallback queries (used when no customer CSV is provided) to f
     # ── Step 3: Customers ───────────────────────────────────
     send("step_start", step="customers", label="Finding Customers", progress=45)
     for q in analysis.get("customer_queries", [])[:2]:
+        if not q or not q.strip(): continue
         needed = n_customers - sum(1 for p in all_prospects if p["category"] == "customer")
         if needed <= 0:
             break
@@ -2422,6 +2474,7 @@ lookalike_queries: fallback queries (used when no customer CSV is provided) to f
     if not seeded:
         send("log", text="Using fallback lookalike search.")
         for q in analysis.get("lookalike_queries", [])[:2]:
+            if not q or not q.strip(): continue
             needed = n_lookalikes - sum(1 for p in all_prospects if p["category"] == "interview")
             if needed <= 0:
                 break
@@ -2436,21 +2489,31 @@ lookalike_queries: fallback queries (used when no customer CSV is provided) to f
     send("step_start", step="drafting", label="Drafting Emails", progress=80)
     send("log", text=f"Gemini is personalizing {len(all_prospects)} emails…")
 
-    if all_prospects:
-        batch_input = [
-            {"id": p["id"], "name": p["name"], "title": p["title"],
-             "company": p["company"], "bio": p["exa_summary"][:200], "category": p["category"]}
-            for p in all_prospects
-        ]
-        draft_prompt = f"""You are a founder writing cold outreach emails. Short (3-5 sentences), genuine, non-spammy.
+    def _extract_json_array(text: str):
+        """Robustly extract a JSON array from Gemini output."""
+        text = text.strip()
+        # Strip markdown fences
+        if "```" in text:
+            parts = text.split("```")
+            for part in parts:
+                part = part.strip()
+                if part.startswith("json"):
+                    part = part[4:].strip()
+                if part.startswith("["):
+                    text = part
+                    break
+        # Find the outermost [ ... ] array
+        start = text.find("[")
+        end   = text.rfind("]")
+        if start != -1 and end != -1 and end > start:
+            text = text[start:end+1]
+        return json.loads(text)
+
+    DRAFT_SYSTEM = f"""You are a founder writing cold outreach emails. Short (3-5 sentences), genuine, non-spammy.
 
 Product: {value_prop}
 Context: {business_summary}
 Calendar link (interview emails): {cal_link or "[not provided]"}
-
-Write a personalized email for each prospect below.
-Return ONLY a valid JSON array (no markdown):
-[{{"id":"...","subject":"...","body":"..."}}, ...]
 
 Rules by category:
 - investor: concrete traction signal or insight, market framing, ask for 30-min call
@@ -2458,29 +2521,38 @@ Rules by category:
 - interview: reference their background/company, ask for 20-min call, include calendar link
 
 No "I hope this finds you well". No generic openers. Subject lines under 50 chars.
+Return ONLY a valid JSON array — no markdown, no explanation:
+[{{"id":"...","subject":"...","body":"..."}}, ...]"""
 
-Prospects:
-{json.dumps(batch_input)}"""
-
-        try:
-            resp = genai_client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=draft_prompt,
-            )
-            raw = resp.text.strip()
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-            drafts    = json.loads(raw)
-            draft_map = {d["id"]: d for d in drafts}
-            for p in all_prospects:
-                if p["id"] in draft_map:
-                    p["draft_subject"] = draft_map[p["id"]].get("subject", "")
-                    p["draft_body"]    = draft_map[p["id"]].get("body", "")
-                    if uid: _fs_save_prospect(uid, campaign_id, p)
-        except Exception as e:
-            send("log", text=f"Email drafting error: {e}. Drafts left blank.", level="warn")
+    BATCH_SIZE = 10
+    if all_prospects:
+        for batch_start in range(0, len(all_prospects), BATCH_SIZE):
+            batch = all_prospects[batch_start:batch_start + BATCH_SIZE]
+            batch_input = [
+                {"id": p["id"], "name": p["name"], "title": p["title"],
+                 "company": p["company"], "bio": (p.get("exa_summary") or "")[:200],
+                 "category": p["category"]}
+                for p in batch
+            ]
+            prompt = DRAFT_SYSTEM + f"\n\nProspects:\n{json.dumps(batch_input)}"
+            try:
+                resp = genai_client.models.generate_content(
+                    model="gemini-3-flash-preview",
+                    contents=prompt,
+                )
+                drafts    = _extract_json_array(resp.text)
+                draft_map = {d["id"]: d for d in drafts}
+                for p in batch:
+                    d = draft_map.get(p["id"])
+                    if d:
+                        p["draft_subject"] = d.get("subject", "")
+                        p["draft_body"]    = d.get("body", "")
+                        if uid: _fs_save_prospect(uid, campaign_id, p)
+                send("log", text=f"Drafted {len(draft_map)} emails (batch {batch_start//BATCH_SIZE + 1}).", level="success")
+            except Exception as e:
+                send("log", text=f"Drafting error (batch {batch_start//BATCH_SIZE + 1}): {e}", level="warn")
+                if uid:
+                    _fs_log_email_event(uid, campaign_id, {"type": "log", "text": f"Drafting error: {e}", "level": "warn"})
 
     send("step_done", step="drafting")
 
@@ -2504,6 +2576,21 @@ Prospects:
     send("done", campaign_id=campaign_id, total=len(all_prospects), emails_found=emails_found)
     send("log", text=f"Complete — {len(all_prospects)} prospects, {emails_found} with emails.")
 
+    # ── Auto-save drafts to Gmail ────────────────────────────
+    if GMAIL_SENDER and GMAIL_APP_PASSWORD:
+        send("log", text="Saving drafts to Gmail…")
+        drafted = 0
+        for p in all_prospects:
+            if p.get("email") and p.get("draft_subject") and p.get("draft_body"):
+                err = _gmail_save_draft(p["email"], p["draft_subject"], p["draft_body"])
+                if err:
+                    send("log", text=f"Draft failed for {p.get('name','?')}: {err}", level="warn")
+                else:
+                    drafted += 1
+                    if uid:
+                        _fs_save_prospect(uid, campaign_id, {**p, "drafted": True})
+        send("log", text=f"{drafted} drafts saved to Gmail.", level="success")
+
 
 # ── Gmail status + send routes ──────────────────────────────
 
@@ -2513,8 +2600,8 @@ async def gmail_status(request: Request):
     return JSONResponse({"configured": configured, "email": GMAIL_SENDER if configured else ""})
 
 
-@app.post("/api/email/send")
-async def email_send(request: Request):
+@app.post("/api/email/draft")
+async def email_draft(request: Request):
     uid = _get_uid(request)
     if not uid:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -2529,7 +2616,7 @@ async def email_send(request: Request):
     if not to_addr:
         return JSONResponse({"error": "No recipient address"}, status_code=400)
 
-    err = _smtp_send(to_addr, subject, email_body)
+    err = _gmail_save_draft(to_addr, subject, email_body)
     if err:
         return JSONResponse({"error": err}, status_code=500)
 
@@ -2538,7 +2625,7 @@ async def email_send(request: Request):
             (fs.collection("users").document(uid)
                .collection("emailCampaigns").document(campaign_id)
                .collection("prospects").document(prospect_id)
-               .set({"sent": True, "sent_at": fb_fs.SERVER_TIMESTAMP}, merge=True))
+               .set({"drafted": True, "drafted_at": fb_fs.SERVER_TIMESTAMP}, merge=True))
         except Exception:
             pass
 

@@ -220,7 +220,7 @@
     const bid = params.get("bid") || "";
 
     // ── Firestore status check ─────────────────────────────
-    import { getFirestore, doc, getDoc, collection, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, onSnapshot, collection, query, orderBy } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
     const db = getFirestore();
 
     async function checkFirestoreJob() {
@@ -249,6 +249,10 @@
              addLog("Reels loaded from storage.", "success");
              showReelsCarousel(data.marketingReelUrls);
              listenForLogs(uid, bid);
+             addLog("Proceeding to Cold Email Outreach in 5 seconds…", "success");
+             setTimeout(() => {
+               window.location.href = `/marketing/email?bid=${encodeURIComponent(bid)}`;
+             }, 5000);
              return;
           }
           if (data.pipelineStatus === "reels") {
@@ -261,6 +265,23 @@
         }
       } catch (err) { console.error(err); }
       startBuild();
+    }
+
+    let _pipelineWatcherUnsubscribe = null;
+
+    function watchPipelineStatus(uid, bid) {
+      if (_pipelineWatcherUnsubscribe) return; // already watching
+      const bizRef = doc(db, "users", uid, "businesses", bid);
+      _pipelineWatcherUnsubscribe = onSnapshot(bizRef, (snap) => {
+        if (!snap.exists()) return;
+        const status = snap.data().pipelineStatus;
+        if (status === "emailing" || status === "complete") {
+          addLog("Reels done — proceeding to Cold Email Outreach…", "success");
+          if (_pipelineWatcherUnsubscribe) _pipelineWatcherUnsubscribe();
+          const emailUrl = `/marketing/email${bid ? `?bid=${encodeURIComponent(bid)}` : ""}`;
+          setTimeout(() => { window.location.href = emailUrl; }, 2500);
+        }
+      });
     }
 
     function listenForLogs(uid, bid) {
@@ -416,6 +437,14 @@
 
              if (ev.urls && ev.urls.length > 0) {
                 showReelsCarousel(ev.urls);
+             }
+
+             // Auto-redirect to email outreach after a short pause
+             if (bid) {
+               addLog("Proceeding to Cold Email Outreach in 5 seconds…", "success");
+               setTimeout(() => {
+                 window.location.href = `/marketing/email?bid=${encodeURIComponent(bid)}`;
+               }, 5000);
              }
           }
           if (ev.type === "ws_done" && ws) { ws.close(); }

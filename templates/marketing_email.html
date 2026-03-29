@@ -563,14 +563,15 @@
             </div>
             <div class="stat-item">
               <span class="stat-value" id="stat-sent">0</span>
-              <span class="stat-label">Sent</span>
+              <span class="stat-label">Drafted</span>
             </div>
           </div>
           <button class="send-all-btn" id="send-all-btn" type="button" onclick="sendAllReady()">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+              <polyline points="22,6 12,13 2,6"/>
             </svg>
-            Send All Ready
+            Save All as Drafts
           </button>
         </div>
 
@@ -724,7 +725,8 @@
     });
 
     // ── Check Firestore for status ──────────────────────────
-    import { doc, getDoc, collection, getDocs, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, collection, getDocs, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+    const db = getFirestore();
 
     async function checkFirestoreJob() {
       if (!bid || !auth.currentUser) return;
@@ -733,10 +735,13 @@
         const bizRef = doc(db, "users", uid, "businesses", bid);
         const bizSnap = await getDoc(bizRef);
         if (!bizSnap.exists()) return;
-        
+
         const data = bizSnap.data();
         const status = data.pipelineStatus;
         campaignId = data.currentEmailCampaignId;
+
+        // Always pre-fill form from Firestore
+        if (data.prd) document.getElementById("f-business").value = data.prd;
 
         if (status === "emailing") {
           activeJobId = campaignId || "reconnect-" + bid;
@@ -756,10 +761,25 @@
           }
         } else if (status === "complete" && campaignId) {
           loadCompletedCampaign(uid, campaignId);
+        } else {
+          // Auto-start: pull prd from Firestore and kick off without user input
+          const prdText     = data.prd         || "";
+          const deployedUrl = data.deployedUrl  || "";
+          const business = prdText || (deployedUrl ? `App deployed at ${deployedUrl}` : "");
+          if (business) {
+            addLog("Auto-starting email outreach from your PRD…");
+            autoStartPipeline(business, deployedUrl);
+          }
         }
       } catch (err) {
         console.error("Firestore status check failed:", err);
       }
+    }
+
+    function autoStartPipeline(business, deployedUrl) {
+      document.getElementById("f-business").value = business;
+      document.getElementById("f-customer").value = "potential customers, investors, and early adopters";
+      startPipeline(true);
     }
 
     function listenForLogs(uid, cid) {
@@ -1008,17 +1028,17 @@
         <td>${emailHtml}</td>
         <td><div class="draft-preview" title="${esc(p.draft_subject)}">${esc(p.draft_subject || "—")}</div></td>
         <td id="status-${p.id}">
-          <span class="email-status ${p.sent ? 'sent' : 'ready'}">
-            <span class="e-dot ${p.sent ? 'sent' : 'ready'}"></span>
-            ${p.sent ? 'Sent' : 'Pending'}
+          <span class="email-status ${p.drafted ? 'sent' : 'ready'}">
+            <span class="e-dot ${p.drafted ? 'sent' : 'ready'}"></span>
+            ${p.drafted ? 'Drafted' : 'Pending'}
           </span>
         </td>
         <td>
-          <button class="send-row-btn ${p.sent ? 'sent-btn' : ''}"
+          <button class="send-row-btn ${p.drafted ? 'sent-btn' : ''}"
                   id="btn-${p.id}"
                   type="button"
-                  ${p.sent ? 'disabled' : `onclick="toggleDrawer('${p.id}')"`}>
-            ${p.sent ? 'Sent' : 'Edit &amp; Send'}
+                  ${p.drafted ? 'disabled' : `onclick="toggleDrawer('${p.id}')"`}>
+            ${p.drafted ? 'Drafted' : 'Save Draft'}
           </button>
         </td>`;
       prospectsBody.appendChild(tr);
@@ -1044,7 +1064,7 @@
           <div><label>Subject</label><input type="text" id="d-sub-${id}" value="${esc(p.draft_subject)}" /></div>
           <div><label>Body</label><textarea id="d-body-${id}">${esc(p.draft_body)}</textarea></div>
           <div class="drawer-actions">
-            <button class="drawer-send-btn" id="dsend-${id}" type="button" onclick="sendOne('${id}')">Send Email</button>
+            <button class="drawer-send-btn" id="dsend-${id}" type="button" onclick="sendOne('${id}')">Save Draft to Gmail</button>
             <button class="drawer-cancel-btn" type="button" onclick="toggleDrawer('${id}')">Cancel</button>
           </div>
         </div>
@@ -1062,10 +1082,10 @@
       if (!to) { alert("Enter a recipient email address."); return; }
 
       const btn = document.getElementById(`dsend-${id}`);
-      if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
+      if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
 
       try {
-        const r = await fetch("/api/email/send", {
+        const r = await fetch("/api/email/draft", {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${currentToken}` },
           body: JSON.stringify({ to, subject, body, campaign_id: campaignId, prospect_id: id }),
@@ -1074,38 +1094,38 @@
         if (d.error) throw new Error(d.error);
 
         const p = allProspects.find(x => x.id === id);
-        if (p) { p.sent = true; p.email = to; p.draft_subject = subject; p.draft_body = body; }
+        if (p) { p.drafted = true; p.email = to; p.draft_subject = subject; p.draft_body = body; }
         sentCount++;
         document.getElementById("stat-sent").textContent = sentCount;
 
         const statusEl = document.getElementById(`status-${id}`);
-        if (statusEl) statusEl.innerHTML = `<span class="email-status sent"><span class="e-dot sent"></span>Sent</span>`;
+        if (statusEl) statusEl.innerHTML = `<span class="email-status sent"><span class="e-dot sent"></span>Drafted</span>`;
         const rowBtn = document.getElementById(`btn-${id}`);
-        if (rowBtn) { rowBtn.textContent = "Sent"; rowBtn.className = "send-row-btn sent-btn"; rowBtn.disabled = true; rowBtn.onclick = null; }
+        if (rowBtn) { rowBtn.textContent = "Drafted"; rowBtn.className = "send-row-btn sent-btn"; rowBtn.disabled = true; rowBtn.onclick = null; }
 
         document.getElementById(`drawer-${id}`)?.remove();
         openDrawerRowId = null;
       } catch (err) {
-        alert("Send failed: " + err.message);
-        if (btn) { btn.disabled = false; btn.textContent = "Send Email"; }
+        alert("Save draft failed: " + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = "Save Draft to Gmail"; }
       }
     };
 
     // ── Send all ─────────────────────────────────────────────
     window.sendAllReady = async function() {
       if (!gmailConnected) { alert("Gmail not configured — set GMAIL_SENDER and GMAIL_APP_PASSWORD in .env and restart the server."); return; }
-      const ready = allProspects.filter(p => !p.sent && p.email);
-      if (!ready.length) { alert("No prospects with email addresses to send to."); return; }
-      if (!confirm(`Send ${ready.length} emails now?`)) return;
+      const ready = allProspects.filter(p => !p.drafted && p.email && p.draft_subject);
+      if (!ready.length) { alert("No prospects with email drafts ready."); return; }
+      if (!confirm(`Save ${ready.length} drafts to Gmail?`)) return;
 
       const btn = document.getElementById("send-all-btn");
       btn.disabled = true;
 
       for (let i = 0; i < ready.length; i++) {
-        btn.textContent = `Sending ${i + 1} / ${ready.length}…`;
+        btn.textContent = `Saving ${i + 1} / ${ready.length}…`;
         const p = ready[i];
         try {
-          const r = await fetch("/api/email/send", {
+          const r = await fetch("/api/email/draft", {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${currentToken}` },
             body: JSON.stringify({ to: p.email, subject: p.draft_subject, body: p.draft_body,
@@ -1113,19 +1133,19 @@
           });
           const d = await r.json();
           if (!d.error) {
-            p.sent = true;
+            p.drafted = true;
             sentCount++;
             document.getElementById("stat-sent").textContent = sentCount;
             const statusEl = document.getElementById(`status-${p.id}`);
-            if (statusEl) statusEl.innerHTML = `<span class="email-status sent"><span class="e-dot sent"></span>Sent</span>`;
+            if (statusEl) statusEl.innerHTML = `<span class="email-status sent"><span class="e-dot sent"></span>Drafted</span>`;
             const rowBtn = document.getElementById(`btn-${p.id}`);
-            if (rowBtn) { rowBtn.textContent = "Sent"; rowBtn.className = "send-row-btn sent-btn"; rowBtn.disabled = true; rowBtn.onclick = null; }
+            if (rowBtn) { rowBtn.textContent = "Drafted"; rowBtn.className = "send-row-btn sent-btn"; rowBtn.disabled = true; rowBtn.onclick = null; }
           }
         } catch {}
         await new Promise(res => setTimeout(res, 300));
       }
       btn.disabled    = false;
-      btn.textContent = "Send All Ready";
+      btn.textContent = "Save All as Drafts";
     };
 
     // ── Filter ───────────────────────────────────────────────
@@ -1216,11 +1236,11 @@
     }
 
     // ── Start pipeline ───────────────────────────────────────
-    window.startPipeline = async function() {
+    window.startPipeline = async function(autoStart = false) {
       const business = document.getElementById("f-business").value.trim();
       const customer = document.getElementById("f-customer").value.trim();
       if (!business || !customer) {
-        alert("Please fill in business description and target customer.");
+        if (!autoStart) alert("Please fill in business description and target customer.");
         return;
       }
 

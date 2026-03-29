@@ -54,7 +54,7 @@ img { display: block; }
   min-width: 300px;
 }
 
-/* ── Top Bar (Full-width frosted pane) ── */
+/* ── Top Bar ── */
 .chat-header {
   position: fixed;
   top: 0;
@@ -65,11 +65,55 @@ img { display: block; }
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: rgba(245, 244, 249, 0.82);
+  background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid rgba(0,0,0,0.06);
   z-index: 50;
-  border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+
+.build-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.build-back {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: #888;
+  transition: background 0.12s, color 0.12s;
+  text-decoration: none;
+}
+.build-back:hover { background: #f0f0f0; color: #000; }
+
+.build-header-logo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--black);
+  letter-spacing: -0.3px;
+}
+
+.build-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(0,0,0,0.12);
+}
+
+.build-title-wrap { display: flex; align-items: center; }
+
+.build-title {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #555;
+  letter-spacing: -0.2px;
 }
 
 
